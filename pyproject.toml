@@ -1,0 +1,24 @@
+[project]
+name = "synapse-workspace"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "synapse-core",
+    "synapse-matching",
+    "synapse-reporting",
+    "synapse-backend",
+]
+
+[tool.uv.sources]
+synapse-core = { workspace = true }
+synapse-matching = { workspace = true }
+synapse-reporting = { workspace = true }
+synapse-backend = { workspace = true }
+
+[tool.uv.workspace]
+members = [
+    "packages/synapse-core",
+    "packages/synapse-matching",
+    "packages/synapse-reporting",
+    "packages/synapse-gui/backend",
+]
