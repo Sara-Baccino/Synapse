@@ -5,6 +5,7 @@ from synapse_matching.diagnostics.balance.chi_square_test import ChiSquareBalanc
 from synapse_matching.diagnostics.balance.ks_test import KolmogorovSmirnovBalanceTest
 from synapse_matching.diagnostics.balance.smd import StandardizedMeanDifferenceMetric
 from synapse_matching.diagnostics.balance.variance_ratio import VarianceRatioMetric
+from synapse_matching.diagnostics.balance.jensen_shannon import JensenShannonBalanceMetric
 
 __all__ = ["BalanceDiagnosticsService"]
 
@@ -16,11 +17,13 @@ class BalanceDiagnosticsService:
         variance_ratio_metric: VarianceRatioMetric | None = None,
         ks_test: KolmogorovSmirnovBalanceTest | None = None,
         chi_square_test: ChiSquareBalanceTest | None = None,
+        jensen_shannon_metric: JensenShannonBalanceMetric | None = None
     ) -> None:
         self._smd_metric = smd_metric or StandardizedMeanDifferenceMetric()
         self._variance_ratio_metric = variance_ratio_metric or VarianceRatioMetric()
         self._ks_test = ks_test or KolmogorovSmirnovBalanceTest()
         self._chi_square_test = chi_square_test or ChiSquareBalanceTest()
+        self._jensen_shannon_metric = jensen_shannon_metric or JensenShannonBalanceMetric()
 
     def compute(
         self,
@@ -59,5 +62,10 @@ class BalanceDiagnosticsService:
 
         if "chi_square" in balance_metrics:
             table = table.join(self._chi_square_test.compute(df_after, treatment_column, all_covariates), on="variable", how="left")
+
+        if "jensen_shannon" in balance_metrics:
+            table = table.join(self._jensen_shannon_metric.compute(df_after, treatment_column, all_covariates),
+                on="variable", how="left"
+            )
 
         return table.with_columns(pl.col("variable").is_in(matching_covariates).alias("is_matching_covariate"))

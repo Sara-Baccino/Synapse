@@ -10,4 +10,4 @@ class DiagnosticsConfig(BaseModel):
     run_overlap_diagnostics: bool = True
     run_pair_diagnostics: bool = True
     run_balance_diagnostics: bool = True
-    balance_metrics: list[Literal["smd", "variance_ratio", "ks_test", "chi_square"]] = Field(default_factory=lambda: ["smd"])
+    balance_metrics: list[Literal["smd", "variance_ratio", "ks_test", "chi_square", "jensen_shannon"]] = Field(default_factory=lambda: ["smd"])

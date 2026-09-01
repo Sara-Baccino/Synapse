@@ -70,6 +70,7 @@ CAPABILITY_REGISTRY: dict[tuple[str, str], CapabilityStatus] = {
     ("balance_metric", "variance_ratio"): CapabilityStatus.SUPPORTED,   # era PLANNED
     ("balance_metric", "ks_test"): CapabilityStatus.SUPPORTED,           # era PLANNED
     ("balance_metric", "chi_square"): CapabilityStatus.SUPPORTED,        # era PLANNED
+    ("balance_metric", "jensen_shannon"): CapabilityStatus.SUPPORTED,
 }
 
 
