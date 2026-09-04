@@ -13,6 +13,12 @@ dependencies = [
     "lxml>=6.1.2",
     "reportlab>=5.0.1",
     "svglib>=2.2.0",
+    "pytest>=9.1.1",
+    "httpx2>=2.12.0",
+    "openpyxl>=3.1.5",
+    "python-calamine>=0.8.2",
+    "fsspec>=2026.7.0",
+    "fastexcel>=0.21.0",
 ]
 
 [tool.uv.sources]

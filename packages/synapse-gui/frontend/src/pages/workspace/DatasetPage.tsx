@@ -42,7 +42,7 @@ export function DatasetPage() {
       <p className="mt-2 max-w-xl text-slate-500">
         {isDemo 
           ? "Stai utilizzando il dataset pre-caricato SynClair_Toy_Dataset_v1.csv."
-          : "Upload a CSV or Parquet file. You'll be able to review and adjust the column configuration in the next step."
+          : "Upload a CSV, Excel or Parquet file. You'll be able to review and adjust the column configuration in the next step."
         }
       </p>
 
@@ -118,10 +118,10 @@ export function DatasetPage() {
           </div>
 
           <button
-            onClick={() => navigate("/workspace/modules")}
+            onClick={() => navigate("/workspace/modules/matching/data")}
             className="mt-6 rounded bg-blue-600 px-4 py-2 text-sm text-white"
           >
-            Continue to module selection →
+            Continue with Matching configuration →
           </button>
 
           <div className="mt-6 flex justify-end">

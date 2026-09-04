@@ -163,7 +163,7 @@ def _save_dataframes(frames: dict[str, pl.DataFrame], base: Path, subdir: str) -
 
     relative_paths: dict[str, str] = {}
     for name, frame in frames.items():
-        relative_path = f"{subdir}/{name}.parquet"
+        relative_path = f"{subdir}/{name}.csv"
         frame.write_parquet(base / relative_path)
         relative_paths[name] = relative_path
     return relative_paths

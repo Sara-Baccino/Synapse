@@ -193,24 +193,27 @@ class MatchingModule(AnalysisModule[MatchingModuleConfig]):
                 is_population_selection = match_output.strategy_metadata.get("output_type") == "population_selection"
 
                 if is_population_selection:
-                    # OT selects a subset of the pool; there is no 1:1
-                    # pairing with the query population (see Opt. A
-                    # decision). pair_id is not meaningful here: the
-                    # selected pool units get a distinct, non-paired
-                    # group marker instead of a fabricated pair_id.
                     selected_pool = working_pool[match_output.matched_indices["pool"].tolist()]
                     selected_pool = selected_pool.with_columns(
                         pl.lit(None, dtype=pl.Int64).alias("pair_id"),
+                        pl.Series("weights", match_output.weights),
                         pl.lit("selected").alias("__role__"),
                     )
-                    matched_frames.append(selected_pool)
-                    all_distances.extend(match_output.distances.tolist())
+
                 elif match_output.pair_id.size > 0:
                     matched_query = working_query[match_output.matched_indices["query"].tolist()]
                     matched_pool = working_pool[match_output.matched_indices["pool"].tolist()]
                     shifted_pair_id = match_output.pair_id + pair_id_offset
-                    matched_query = matched_query.with_columns(pl.Series("pair_id", shifted_pair_id), pl.lit(direction.split("_to_")[0]).alias("__role__"))
-                    matched_pool = matched_pool.with_columns(pl.Series("pair_id", shifted_pair_id), pl.lit(direction.split("_to_")[1]).alias("__role__"))
+                    matched_query = matched_query.with_columns(
+                        pl.Series("pair_id", shifted_pair_id),
+                        pl.Series("weights", match_output.weights),
+                        pl.lit(direction.split("_to_")[0]).alias("__role__"),
+                    )
+                    matched_pool = matched_pool.with_columns(
+                        pl.Series("pair_id", shifted_pair_id),
+                        pl.Series("weights", match_output.weights),
+                        pl.lit(direction.split("_to_")[1]).alias("__role__"),
+                    )
                     matched_frames.extend([matched_query, matched_pool])
                     pair_id_offset = int(shifted_pair_id.max()) + 1
                     all_distances.extend(match_output.distances.tolist())

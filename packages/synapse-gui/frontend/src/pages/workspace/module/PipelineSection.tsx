@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 
 import { getJobStatus, runStructure } from "../../../api/client";
 import { useWorkspace } from "../../../context/WorkspaceContext";
-import { ClusteringAlgorithmPicker } from "../../../components/ClusteringAlgorithmPicker";
+import { MatchingStrategyPicker } from "../../../components/MatchingStrategyPicker";
 import type {
   ClusteringAlgorithmName,
   ClusteringConfig,
@@ -166,7 +166,7 @@ export function PipelineSection() {
       )}
 
       <div className="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <ClusteringAlgorithmPicker
+        <MatchingStrategyPicker
           algorithm={clusteringAlgorithm}
           onAlgorithmChange={setClusteringAlgorithm}
           primaryParam={primaryParam}

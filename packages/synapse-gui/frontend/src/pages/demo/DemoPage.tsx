@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { getDemoTools, runDemoStructure } from "../../api/client";
-import { ClusteringAlgorithmPicker } from "../../components/ClusteringAlgorithmPicker";
+import { MatchingStrategyPicker } from "../../components/MatchingStrategyPicker";
 import { DemoProvider, useDemo } from "../../context/DemoContext";
 import type { ClusteringAlgorithmName, DemoDatasetName } from "../../types/api";
 
@@ -176,7 +176,7 @@ function DemoAnalysis() {
           {activeSection === "pipeline" && (
             <div>
               <h1 className="text-xl font-semibold text-slate-800 mb-4">Run Structure Discovery</h1>
-              <ClusteringAlgorithmPicker
+              <MatchingStrategyPicker
                 algorithm={algorithm} onAlgorithmChange={setAlgorithm}
                 primaryParam={primaryParam} onPrimaryParamChange={setPrimaryParam}
                 includeProjection={includeProjection} onIncludeProjectionChange={setIncludeProjection}

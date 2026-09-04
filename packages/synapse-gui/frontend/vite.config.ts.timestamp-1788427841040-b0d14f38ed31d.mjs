@@ -1,0 +1,18 @@
+// vite.config.ts
+import { defineConfig } from "file:///C:/Users/sbaccino/Desktop/Synapse/packages/synapse-gui/frontend/node_modules/vite/dist/node/index.js";
+import react from "file:///C:/Users/sbaccino/Desktop/Synapse/packages/synapse-gui/frontend/node_modules/@vitejs/plugin-react/dist/index.js";
+import tailwindcss from "file:///C:/Users/sbaccino/Desktop/Synapse/packages/synapse-gui/frontend/node_modules/@tailwindcss/vite/dist/index.mjs";
+var vite_config_default = defineConfig({
+  plugins: [
+    react(),
+    tailwindcss()
+  ],
+  server: {
+    port: 5174,
+    proxy: { "/api": { target: "http://localhost:8001", changeOrigin: true, rewrite: (p) => p.replace(/^\/api/, "") } }
+  }
+});
+export {
+  vite_config_default as default
+};
+//# sourceMappingURL=data:application/json;base64,ewogICJ2ZXJzaW9uIjogMywKICAic291cmNlcyI6IFsidml0ZS5jb25maWcudHMiXSwKICAic291cmNlc0NvbnRlbnQiOiBbImNvbnN0IF9fdml0ZV9pbmplY3RlZF9vcmlnaW5hbF9kaXJuYW1lID0gXCJDOlxcXFxVc2Vyc1xcXFxzYmFjY2lub1xcXFxEZXNrdG9wXFxcXFN5bmFwc2VcXFxccGFja2FnZXNcXFxcc3luYXBzZS1ndWlcXFxcZnJvbnRlbmRcIjtjb25zdCBfX3ZpdGVfaW5qZWN0ZWRfb3JpZ2luYWxfZmlsZW5hbWUgPSBcIkM6XFxcXFVzZXJzXFxcXHNiYWNjaW5vXFxcXERlc2t0b3BcXFxcU3luYXBzZVxcXFxwYWNrYWdlc1xcXFxzeW5hcHNlLWd1aVxcXFxmcm9udGVuZFxcXFx2aXRlLmNvbmZpZy50c1wiO2NvbnN0IF9fdml0ZV9pbmplY3RlZF9vcmlnaW5hbF9pbXBvcnRfbWV0YV91cmwgPSBcImZpbGU6Ly8vQzovVXNlcnMvc2JhY2Npbm8vRGVza3RvcC9TeW5hcHNlL3BhY2thZ2VzL3N5bmFwc2UtZ3VpL2Zyb250ZW5kL3ZpdGUuY29uZmlnLnRzXCI7aW1wb3J0IHsgZGVmaW5lQ29uZmlnIH0gZnJvbSBcInZpdGVcIjtcbmltcG9ydCByZWFjdCBmcm9tIFwiQHZpdGVqcy9wbHVnaW4tcmVhY3RcIjtcbmltcG9ydCB0YWlsd2luZGNzcyBmcm9tIFwiQHRhaWx3aW5kY3NzL3ZpdGVcIjtcblxuZXhwb3J0IGRlZmF1bHQgZGVmaW5lQ29uZmlnKHtcbiAgcGx1Z2luczogW1xuICAgIHJlYWN0KCksXG4gICAgdGFpbHdpbmRjc3MoKSxcbiAgXSxcbiAgc2VydmVyOiB7XG4gICAgcG9ydDogNTE3NCxcbiAgICBwcm94eTogeyBcIi9hcGlcIjogeyB0YXJnZXQ6IFwiaHR0cDovL2xvY2FsaG9zdDo4MDAxXCIsIGNoYW5nZU9yaWdpbjogdHJ1ZSwgcmV3cml0ZTogKHApID0+IHAucmVwbGFjZSgvXlxcL2FwaS8sIFwiXCIpIH0gfSxcbiAgfSxcbn0pOyJdLAogICJtYXBwaW5ncyI6ICI7QUFBK1gsU0FBUyxvQkFBb0I7QUFDNVosT0FBTyxXQUFXO0FBQ2xCLE9BQU8saUJBQWlCO0FBRXhCLElBQU8sc0JBQVEsYUFBYTtBQUFBLEVBQzFCLFNBQVM7QUFBQSxJQUNQLE1BQU07QUFBQSxJQUNOLFlBQVk7QUFBQSxFQUNkO0FBQUEsRUFDQSxRQUFRO0FBQUEsSUFDTixNQUFNO0FBQUEsSUFDTixPQUFPLEVBQUUsUUFBUSxFQUFFLFFBQVEseUJBQXlCLGNBQWMsTUFBTSxTQUFTLENBQUMsTUFBTSxFQUFFLFFBQVEsVUFBVSxFQUFFLEVBQUUsRUFBRTtBQUFBLEVBQ3BIO0FBQ0YsQ0FBQzsiLAogICJuYW1lcyI6IFtdCn0K

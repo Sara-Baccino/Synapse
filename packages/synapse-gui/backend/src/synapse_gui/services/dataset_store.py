@@ -3,9 +3,10 @@ synapse_gui.services.dataset_store
 ----------------------------------------
 
 In-memory registry of uploaded datasets and their associated DataConfig,
-keyed by a server-generated dataset_id. Mirrors the in-memory-only
-pattern agreed for job state (Phase 8, point 2): no persistence, no
-Redis -- process memory only, reset on server restart.
+keyed by a server-generated dataset_id. Identical in logic to
+synclair-gui's dataset_store.py (Phase 1 recycling plan) -- no
+Structure/Matching-specific logic here, only generic dataset/config
+storage.
 """
 
 from __future__ import annotations
@@ -34,13 +35,6 @@ class DatasetRecord:
 
 
 class DatasetStore:
-    """Thread-safe in-memory dataset registry.
-
-    A lock guards read/write since FastAPI may handle concurrent
-    requests (and, once structure.py's background jobs exist, a running
-    job may read a dataset while another request updates its config).
-    """
-
     def __init__(self) -> None:
         self._records: dict[str, DatasetRecord] = {}
         self._lock = threading.Lock()
@@ -66,10 +60,4 @@ class DatasetStore:
         return record
 
 
-# Module-level singleton: acceptable here (unlike the "avoid singletons"
-# rule applied to stateless utilities like ConfigBuilder/Loader) because
-# this object's entire purpose is to hold shared mutable state across
-# requests within a single server process -- there is nothing to gain
-# from multiple instances, and FastAPI's dependency-injection story for
-# "one shared registry per process" is exactly a module-level singleton.
 dataset_store = DatasetStore()

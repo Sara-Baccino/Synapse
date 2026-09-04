@@ -125,7 +125,7 @@ export function LandingPage() {
 
             <div className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
               <button onClick={() => scrollToSection("overview")} className="hover:text-slate-900 transition">Overview</button>
-              <button onClick={() => scrollToSection("modules")} className="hover:text-slate-900 transition">Modules</button>
+              <button onClick={() => scrollToSection("modules")} className="hover:text-slate-900 transition">Tools</button>
               <button onClick={() => scrollToSection("demo")} className="hover:text-slate-900 transition">Demo</button>
               <button onClick={() => scrollToSection("workspace")} className="hover:text-slate-900 transition">Workspace</button>
             </div>
@@ -144,17 +144,19 @@ export function LandingPage() {
         {/* 2. HERO SECTION */}
         <section id="hero" className="pt-36 pb-24 px-6 text-center max-w-6xl mx-auto flex flex-col items-center justify-center min-h-[90vh]">
           <div className="max-w-4xl mx-auto flex flex-col items-center">
-            <h1 className="text-6xl sm:text-7xl lg:text-8xl font-extrabold tracking-tight mb-6 select-none bg-gradient-to-r from-violet-500 via-pink-500 to-amber-400 bg-clip-text text-transparent">
-              synapse
+            <h1 className="text-6xl sm:text-7xl lg:text-8xl font-extrabold tracking-tight mb-8 pb-2 leading-normal select-none bg-gradient-to-r from-violet-500 via-pink-500 to-amber-400 bg-clip-text text-transparent">
+              Synapse
             </h1>
 
             <h3 className="text-xl sm:text-3xl font-semibold text-slate-800 mb-8 leading-tight">
-              Transform complex data into clear decisions.<br />
+              From populations to comparable groups.<br />
 
             </h3>
             <p className="text-base sm:text-lg text-slate-600 font-normal max-w-2xl leading-relaxed mb-10">
-              Analyze the structure, quality, and relationships of your data <br/> in one modular workspace. <br/>
-              No coding. No fragmented tools.
+              Configure, run and evaluate population matching in one interactive workspace. <br/> 
+              Define your populations. Choose how they should be matched. <br/>
+              Inspect balance, overlap and match quality before trusting the results. <br/>
+              
             </p>
 
             <div className="flex flex-col sm:flex-row items-center gap-4 mb-16">
@@ -172,13 +174,13 @@ export function LandingPage() {
             </div>
 
             <div className="flex flex-wrap items-center justify-center gap-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">
-              <span className="px-3 py-1 rounded-full bg-white/70 backdrop-blur-sm text-blue-600 border border-white/50">Analyze</span>
+              <span className="px-3 py-1 rounded-full bg-white/70 backdrop-blur-sm text-blue-600 border border-white/50">Define</span>
               <span>·</span>
-              <span className="px-3 py-1 rounded-full bg-white/70 backdrop-blur-sm text-purple-600 border border-white/50">Compare</span>
+              <span className="px-3 py-1 rounded-full bg-white/70 backdrop-blur-sm text-purple-600 border border-white/50">Match</span>
               <span>·</span>
-              <span className="px-3 py-1 rounded-full bg-white/70 backdrop-blur-sm text-pink-600 border border-white/50">Validate</span>
+              <span className="px-3 py-1 rounded-full bg-white/70 backdrop-blur-sm text-pink-600 border border-white/50">Diagnose</span>
               <span>·</span>
-              <span className="px-3 py-1 rounded-full bg-white/70 backdrop-blur-sm text-yellow-600 border border-white/50">Understand</span>
+              <span className="px-3 py-1 rounded-full bg-white/70 backdrop-blur-sm text-yellow-600 border border-white/50">Compare</span>
             </div>
           </div>
         </section>
@@ -192,35 +194,36 @@ export function LandingPage() {
               </h2>
 
               <h3 className="text-3xl sm:text-4xl font-semibold text-slate-800 mb-6">
-                What is synapse?
+                What is Synapse?
               </h3>
 
               <p className="text-lg sm:text-2xl text-slate-800 font-semibold leading-relaxed mb-8">
                 <span className="bg-gradient-to-r from-purple-600 to-amber-500 bg-clip-text text-transparent">
-                  A modular environment for interactive data analysis.
+                  An interactive environment for population matching.
                 </span>
               </p>
 
               <p className="text-base sm:text-lg text-slate-600 font-normal leading-relaxed mb-10">
                 
-                synapse brings datasets, analytical tools, configurations and results  <br/> into a 
-                single workspace designed for continuous exploration. <br/> <br/> 
+                Synapse brings population definition, covariate selection, matching strategies and diagnostic tools into a single workspace. <br/> <br/> 
+                
 
                 <p className="text-lg sm:text-2xl text-slate-800 font-semibold leading-relaxed mb-8">
                 <span className="bg-gradient-to-r from-purple-600 to-amber-500 bg-clip-text text-transparent">
-                  Bringing clarity to your data.
+                  Good matching is not just about finding pairs. It's about understanding whether they are comparable.
                 </span>
               </p>
 
-                Start from a dataset, inspect its structure, explore its quality, uncover patterns and relationships. 
-                Then reuse what you discover as input for the next analysis.              
+                Instead of treating matching as a black box, Synapse lets you inspect the entire process: <br/>    
+                define the populations you want to compare, 
+                configure the matching strategy and evaluate the quality of the resulting matches. <br/>      
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-24">
                 {[
-                  { title: "Explore Data Quality", desc: "Inspect missingness, distributions, inconsistencies and structural issues before and during analysis." },
-                  { title: "Understand Structure", desc: "Reveal patterns, formats, clusters, latent dimensions and other characteristics that shape your data." },
-                  { title: "Discover Relationships", desc: "Compare populations, connect records, analyze dependencies and explore relationships across observations and datasets." },
+                  { title: "Define Populations", desc: "Select the treatment and comparison groups, choose relevant covariates and apply filtering or eligibility criteria." },
+                  { title: "Build Different Matches", desc: "Explore representations, distance metrics and matching strategies to construct comparable populations." },
+                  { title: "Diagnose Comparability", desc: "Evaluate balance, overlap, matching rates, unmatched observations and the quality of the resulting pairs." },
                 ].map((cat) => (
                   <div key={cat.title} className="bg-white/70 backdrop-blur-md border border-white/50 p-6 rounded-xl shadow-sm">
                     <h5 className="text-2xl font-semibold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent mb-2">
@@ -236,90 +239,99 @@ export function LandingPage() {
             <div className="text-center max-w-3xl mx-auto mb-12">
             
             <h4 className="text-xs font-semibold uppercase tracking-widest bg-gradient-to-r from-purple-600 to-amber-400 bg-clip-text text-transparent mb-6">
-                A workflow that does not end
+                A matching workflow you can inspect and refine
             </h4>
 
             <h3 className="text-3xl sm:text-4xl font-semibold text-slate-800 mb-6">
-                How synapse works
+                How Synapse works
             </h3>
 
               <p className="text-base sm:text-2xl text-slate-600 font-semibold leading-relaxed mb-4">
                 <span className="bg-gradient-to-r from-purple-600 to-amber-500 bg-clip-text text-transparent">
-                  You build your own analytical path.
+                  There is no single definition of a good match.
                 </span>
               </p>
 
               <p className="text-base sm:text-lg text-slate-600 font-normal leading-relaxed mb-6">
-                synapse is built around analytical modules that can be used independently <br/>
-                or combined with others to create a workflow that evolves with your analysis. <br/> There is no single fixed path.  <br/> <br/>
+                Different populations may require different covariates, representations, distance functions and matching strategies. <br/>
+                Synapse lets you explore these choices interactively, inspect their effects on the resulting population <br/>
+                and refine the analysis without rebuilding the workflow from scratch.<br/> <br/>
               </p>
 
               <p className="text-base sm:text-2xl text-slate-600 font-semibold leading-relaxed mb-4">
                 <span className="bg-gradient-to-r from-purple-600 to-amber-500 bg-clip-text text-transparent">
-                  A result is not necessarily the end of an analysis.
+                  A match is the beginning of the evaluation, not the end.
                 </span>
               </p>
 
               <p className="text-base sm:text-lg text-slate-600 font-normal leading-relaxed mb-8">
-                Results can be inspected, compared, reused and refined. <br/>
-                A transformed dataset, an embedding, a set of matches or another analytical output <br/>
-                can become the starting point for the next step. <br/>
-                synapse allows you to explore the same data with different tools <br/> without starting from scratch. <br/> <br/>
+                Compare balance before and after matching, inspect overlap and distance distributions, <br/> 
+                identify unmatched observations and test alternative configurations.
+                 <br/> <br/>
                 
               </p>
 
             
               <div className="flex flex-col items-center">
                 <span className="bg-gradient-to-r from-purple-600 via-pink-600 to-amber-400 bg-clip-text text-transparent font-extrabold text-sm">
-                  synapse
+                  Synapse
                 </span>
                 <div className="w-0.5 h-8 bg-slate-300 my-1"></div>
+
+                <div className="px-5 py-2 rounded-lg bg-white/80 border border-white/60 text-blue-700 text-xs font-medium shadow-xs">
+                  DEFINE TWO POPULATIONS
+                </div>
+
+                <div className="w-0.5 h-8 bg-slate-300 my-1"></div>
+                
 
                 
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl">
                   <div className="flex flex-col items-center bg-white/80 border border-white/60 p-5 rounded-xl shadow-xs">
-                    <span className="text-xs font-semibold text-purple-600 tracking-wider mb-2">QUALITY</span>
+                    <span className="text-xs font-semibold text-purple-600 tracking-wider mb-2">REPRESENT</span>
                     <div className="w-full border-t border-slate-200 my-2"></div>
                     <ul className="text-xs text-slate-600 space-y-1 text-center font-normal">
-                      <li>Missingness</li>
-                      <li>Cleaning</li>
-                      <li>Constraints</li>
+                      <li>Covariates</li>
+                      <li>Propensity</li>
                     </ul>
                   </div>
                   <div className="flex flex-col items-center bg-white/80 border border-white/60 p-5 rounded-xl shadow-xs">
-                    <span className="text-xs font-semibold text-pink-600 tracking-wider mb-2">STRUCTURE</span>
+                    <span className="text-xs font-semibold text-pink-600 tracking-wider mb-2">MEASURE</span>
                     <div className="w-full border-t border-slate-200 my-2"></div>
                     <ul className="text-xs text-slate-600 space-y-1 text-center font-normal">
-                      <li>Patterns</li>
-                      <li>Formats</li>
-                      <li>Clusters</li>
+                      <li>Distance</li>
+                      <li>Similarity</li>
                     </ul>
                   </div>
                   <div className="flex flex-col items-center bg-white/80 border border-white/60 p-5 rounded-xl shadow-xs">
-                    <span className="text-xs font-semibold text-yellow-600 tracking-wider mb-2">RELATIONSHIPS</span>
+                    <span className="text-xs font-semibold text-yellow-600 tracking-wider mb-2">CONSTRAIN</span>
                     <div className="w-full border-t border-slate-200 my-2"></div>
                     <ul className="text-xs text-slate-600 space-y-1 text-center font-normal">
-                      <li>Networks</li>
-                      <li>Matching</li>
-                      <li>Comparison</li>
+                      <li>Exact Match</li>
+                      <li>Caliper</li>
                     </ul>
                   </div>
                 </div>
 
                 <div className="w-0.5 h-8 bg-slate-300 my-1"></div>
                 <div className="px-6 py-2 rounded-lg bg-white border border-white/60 text-slate-800 font-semibold text-xs tracking-wider shadow-xs">
-                  ANALYZE & COMPARE
+                  MATCH
+                </div>
+
+                <div className="w-0.5 h-8 bg-slate-300 my-1"></div>
+                <div className="px-6 py-2 rounded-lg bg-white border border-white/60 text-slate-800 font-semibold text-xs tracking-wider shadow-xs">
+                  DIAGNOSE
                 </div>
 
               <div className="w-0.5 h-8 bg-slate-300 my-1"></div>
                 <div className="px-5 py-2 rounded-lg bg-white/80 border border-white/60 text-blue-700 text-xs font-medium shadow-xs">
-                  ↺ REUSE & ITERATE
+                  ↺ REFINE
                 </div>
               </div>
 
               <p className="text-base sm:text-lg text-slate-600 font-semibold leading-relaxed mt-10">
-                One workspace. Multiple perspectives. Reusable results.
+                One workspace. Multiple matching strategie. Inspectable results.
               </p>
 
             </div>
@@ -332,10 +344,10 @@ export function LandingPage() {
           <div className="max-w-6xl mx-auto">
             <div className="text-center mb-4">
               <h4 className="text-xs font-semibold uppercase tracking-widest bg-gradient-to-r from-purple-600 to-amber-400 bg-clip-text text-transparent mb-6">
-                Modules
+                Analysis Tools
               </h4>
               <h3 className="text-3xl sm:text-4xl font-semibold text-slate-800 mb-10">
-                Explore Your Data from Every Perspective
+                Explore how populations can be  <br/> represented, compared and matched.
               </h3>
               <p className="text-lg sm:text-xl text-slate-800 font-semibold leading-relaxed mb-6">
                 <span className="bg-gradient-to-r from-purple-600 to-amber-500 bg-clip-text text-transparent">
@@ -343,37 +355,23 @@ export function LandingPage() {
                 </span>
               </p>
               <p className="text-base sm:text-lg text-slate-600 font-normal leading-relaxed mb-10">
-                Each module explores a different aspect of your data. <br/>
-                Use them independently, or combine their outputs to build a broader analytical view. <br/> <br/> 
-                Select a module below to discover its functionalities.
+                Select a module below to discover how to compose your matching pipeline.
               </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               {[
                 {
-                  id: "missingness", title: "Missingness & Quality", subtitle: "Understand missing data patterns, quality indicators and structural inconsistencies.", tags: ["missingness patterns", "correlations", "cleaning", "consistency checks"], path: "/modules/missingness"
+                  id: "missingness", title: "Representation", subtitle: "How chould each population be represented?", tags: ["raw covariates", "Propensity Score", "Hybrid representation"], path: "/modules/missingness"
                 },
                 {
-                  id: "structure", title: "Data Structure", subtitle: "Reveal hidden structures in your data.", tags: ["K-Means", "HDBSCAN", "GMM", "PCA", "UMAP", "anomaly detection"], path: "/modules/clustering-analytics"
+                  id: "structure", title: "Distance", subtitle: "How should similarity be measured?", tags: ["Euclidean", "Mahalanobis", "Gower", "Manhattan", "Hybrid"], path: "/modules/clustering-analytics"
                 },
                 {
-                  id: "patterns", title: "Pattern Discovery", subtitle: "Understand how your dataset is built.", tags: ["data types", "formats", "cardinality", "distributions", "dimensionality"], path: "/modules/data-structure"
+                  id: "patterns", title: "Matching Strategies", subtitle: "How should observations be connected?", tags: ["Nearest Neighbor", "1:K Matching", "Optimal Matching", "Exact Matching", "Stratified Matching"], path: "/modules/data-structure"
                 },
                 {
-                  id: "constraints", title: "Constraint Discovery", subtitle: "Find rules your data appears to follow.", tags: ["structural constraints", "dependencies", "consistency rules"], path: "/modules/constraint-discovery"
-                },
-                {
-                  id: "matching", title: "Dataset Matching", subtitle: "Identify corresponding records across datasets.", tags: ["record linkage", "entity resolution", "similarity", "matching confidence"], path: "/modules/dataset-matching"
-                },
-                {
-                  id: "networks", title: "Network Analysis", subtitle: "Explore relationships between entities.", tags: ["graph construction", "centrality", "communities", "network metrics"], path: "/modules/network-analysis"
-                },
-                {
-                  id: "comparison", title: "Dataset Comparison", subtitle: "Understand how two datasets differ.", tags: ["schema comparison", "distribution comparison", "missingness"], path: "/modules/dataset-comparison"
-                },
-                {
-                  id: "reporting", title: "Reporting", subtitle: "Turn analysis into reproducible outputs.", tags: ["PDF", "CSV", "tables", "metrics", "visualizations"], path: "/modules/reporting"
+                  id: "constraints", title: "Diagnostics", subtitle: "How do you know whether the match worked?", tags: ["Standardized Mean Difference", "Variance Ratio", "KS test", "Common Support"], path: "/modules/constraint-discovery"
                 }
               ].map((mod) => (
                 <div
@@ -397,13 +395,14 @@ export function LandingPage() {
                     </div>
                   </div>
                   <div className="text-xs font-semibold bg-gradient-to-r from-purple-600 via-pink-500 to-amber-500 bg-clip-text text-transparent flex items-center gap-1 group-hover:translate-x-1 transition">
-                    Explore module →
+                    Explore →
                   </div>
                 </div>
               ))}
             </div>
           </div>
         </section>
+
 
         {/* 5. DEMO SECTION */}
         <section id="demo" className="w-full min-h-screen flex flex-col items-center justify-center px-6 border-t border-white/40 bg-white/40 backdrop-blur-md py-20">
@@ -412,10 +411,10 @@ export function LandingPage() {
               Interactive Playground
             </span>
             <h2 className="text-3xl sm:text-5xl font-semibold text-slate-800 mb-8">
-              Try synapse in 2 Minutes
+              Try Synapse in 2 Minutes
             </h2>
             <p className="text-base sm:text-lg text-slate-600 max-w-2xl mx-auto mb-10 leading-relaxed font-normal">
-              Explore synapse with toy datasets and preconfigured analytical workflows. <br/>
+              Explore Synapse with toy datasets and preconfigured analytical workflows. <br/>
               Select a module, experiment with its parameters, inspect intermediate outputs and see how results can lead to the next analysis.
             </p>
             <button
@@ -502,9 +501,9 @@ export function LandingPage() {
         {/* 7. FOOTER */}
         <footer className="w-full bg-white/70 backdrop-blur-md border-t border-white/40 py-8 px-6 text-center text-xs text-slate-600">
           <div className="mb-2 font-extrabold text-sm bg-gradient-to-r from-purple-600 to-amber-400 bg-clip-text text-transparent">
-            synapse
+            Synapse
           </div>
-          <p>&copy; {new Date().getFullYear()} synapse Analytics Environment. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} Synapse Analytics Environment. All rights reserved.</p>
         </footer>
       </div>
     </div>

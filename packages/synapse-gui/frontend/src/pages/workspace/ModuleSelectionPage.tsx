@@ -12,7 +12,7 @@ import { useWorkspace } from "../../context/WorkspaceContext";
 
 const AVAILABLE_MODULES = [
   { id: "structure", title: "Structure Discovery", enabled: true },
-  { id: "matching", title: "Dataset Matching", enabled: false },
+  { id: "matching", title: "Dataset Matching", enabled: true },
   { id: "validation", title: "Synthetic Validation", enabled: false },
   { id: "discovery", title: "Constraint Discovery", enabled: false },
 ];

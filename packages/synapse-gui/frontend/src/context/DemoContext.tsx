@@ -1,23 +1,11 @@
-/**
- * synapse-gui frontend DemoContext
- * -------------------------------------
- *
- * Local, ephemeral state for the /demo route only -- never mounted
- * outside DemoPage, never shared with WorkspaceContext. Holds the
- * current analysis step (dataset/artifact source + algorithm result)
- * and a running list of "previous experiments" for the same demo
- * session, so Results can show a history without any server-side
- * persistence.
- */
-
 import { createContext, useContext, useState, type ReactNode } from "react";
-import type { AnalysisInputSource, DemoStructureRunResponse } from "../types/api";
+import type { AnalysisInputSource, DemoMatchingRunResponse } from "../types/api";
 
 export interface DemoStep {
   moduleId: string;
   source: AnalysisInputSource;
   columns: { name: string; numerical: boolean; categorical: boolean }[];
-  result?: DemoStructureRunResponse;
+  result?: DemoMatchingRunResponse;
 }
 
 export interface DemoExperiment {
@@ -26,7 +14,7 @@ export interface DemoExperiment {
   algorithm: string;
   primaryParam: number;
   includeProjection: boolean;
-  result: DemoStructureRunResponse;
+  result: DemoMatchingRunResponse;
 }
 
 interface DemoContextValue {
@@ -34,7 +22,7 @@ interface DemoContextValue {
   step: DemoStep | null;
   experiments: DemoExperiment[];
   startAnalysis: (source: AnalysisInputSource, moduleId: string, columns: DemoStep["columns"]) => void;
-  setStepResult: (result: DemoStructureRunResponse) => void;
+  setStepResult: (result: DemoMatchingRunResponse) => void;
   recordExperiment: (exp: Omit<DemoExperiment, "id">) => void;
   continueWithSource: (source: AnalysisInputSource, moduleId: string, columns: DemoStep["columns"]) => void;
   resetToIntro: () => void;
@@ -56,7 +44,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     setStep({ moduleId, source, columns });
   }
 
-  function setStepResult(result: DemoStructureRunResponse): void {
+  function setStepResult(result: DemoMatchingRunResponse): void {
     setStep((current) => (current ? { ...current, result } : current));
   }
 
