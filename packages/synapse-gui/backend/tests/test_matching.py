@@ -131,3 +131,88 @@ def test_explore_population_returns_profile(client: TestClient, auth_headers: di
     assert len(body["descriptive_stats"]) == 4  # 2 covariates x 2 groups
     assert len(body["numeric_distributions"]) == 2
     assert len(body["correlations"]["variables"]) == 2
+
+
+# --------------------------------------------------------------------- #
+# Phase 3: config -> imputation -> scaling -> provenance, end-to-end
+# --------------------------------------------------------------------- #
+
+def _csv_bytes_with_missing_clinical_score() -> bytes:
+    # Every 5th row has a missing clinical_score (empty cell -> one of
+    # DataConfig's DEFAULT_MISSING_TOKENS), spread across both treatment
+    # groups so imputation is exercised on units that still need matching.
+    rows = ["patient_id,age,clinical_score,treatment"]
+    for i in range(60):
+        age = 40 + i % 20
+        treatment = 1 if age > 50 else 0
+        clinical_score = "" if i % 5 == 0 else f"{age * 0.5 + i % 5}"
+        rows.append(f"{i},{age},{clinical_score},{treatment}")
+    return ("\n".join(rows) + "\n").encode("utf-8")
+
+
+def _explicit_data_config_with_imputation_and_scaling() -> dict:
+    # Hand-authored DataConfig (bypasses ConfigBuilder inference entirely,
+    # exercising the "user config always wins" path): clinical_score gets
+    # mean imputation + standard scaling, both explicitly declared.
+    return {
+        "patient_id": {"new_name": "patient_id", "id": True, "type": "int"},
+        "age": {"new_name": "age", "numerical": True, "semantic_roles": ["discrete"], "type": "int"},
+        "clinical_score": {
+            "new_name": "clinical_score", "numerical": True, "semantic_roles": ["continuous"],
+            "missing_data_management": {"strategy": "impute", "imputer": "mean"},
+            "scaling": {"enabled": True, "method": "standard"},
+            "type": "float",
+        },
+        "treatment": {"new_name": "treatment", "categorical": True, "semantic_roles": ["binary"], "type": "int"},
+    }
+
+
+def test_run_applies_configured_imputation_and_scaling_and_registers_provenance(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    upload = client.post(
+        "/datasets/upload",
+        files={"file": ("patients.csv", io.BytesIO(_csv_bytes_with_missing_clinical_score()), "text/csv")},
+        headers=auth_headers,
+    )
+    dataset_id = upload.json()["dataset_id"]
+
+    parsed = client.post(
+        "/datasets/parse-config",
+        json={"dataset_id": dataset_id, "existing_config": _explicit_data_config_with_imputation_and_scaling()},
+        headers=auth_headers,
+    )
+    assert parsed.status_code == 200
+    assert parsed.json()["validation"]["is_valid"] is True
+
+    run_response = client.post(
+        "/matching/run",
+        json={"dataset_id": dataset_id, "module_config": _default_module_config()},
+        headers=auth_headers,
+    )
+    assert run_response.status_code == 202
+    job_id = run_response.json()["job_id"]
+    final_status = _wait_for_completion(client, job_id, auth_headers)
+    assert final_status["status"] == "completed"
+
+    result = client.get(f"/matching/jobs/{job_id}/result", headers=auth_headers).json()
+    assert result["success"] is True, result.get("error")
+
+    # Provenance: the exact imputation/scaling choice made for
+    # clinical_score must be retrievable from the run's own result, not
+    # just from the dataset's current (possibly since-changed) DataConfig.
+    columns_config = result["config"]["data_config"]["columns"]
+    clinical_score_config = next(c for c in columns_config if c["name"] == "clinical_score")
+    assert clinical_score_config["missing_data_management"]["strategy"] == "impute"
+    assert clinical_score_config["missing_data_management"]["imputer"] == "mean"
+    assert clinical_score_config["scaling"]["enabled"] is True
+    assert clinical_score_config["scaling"]["method"] == "standard"
+
+    # Effect: imputation must have actually run -- no missing clinical_score
+    # left in the matched dataset (previously apply_imputation was hardcoded
+    # False, so this would have failed the match entirely on missing values
+    # or left nulls in the covariate).
+    matched_dataset = next(d for d in result["datasets"] if d["name"] == "matched_dataset")
+    clinical_scores = [row["clinical_score"] for row in matched_dataset["preview"]]
+    assert None not in clinical_scores
+    assert len(clinical_scores) > 0

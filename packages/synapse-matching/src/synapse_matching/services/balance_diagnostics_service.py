@@ -16,13 +16,13 @@ class BalanceDiagnosticsService:
         smd_metric: StandardizedMeanDifferenceMetric | None = None,
         variance_ratio_metric: VarianceRatioMetric | None = None,
         ks_test: KolmogorovSmirnovBalanceTest | None = None,
-        chi_square_test: ChiSquareBalanceTest | None = None,
+        chi_square: ChiSquareBalanceTest | None = None,
         jensen_shannon_metric: JensenShannonBalanceMetric | None = None
     ) -> None:
         self._smd_metric = smd_metric or StandardizedMeanDifferenceMetric()
         self._variance_ratio_metric = variance_ratio_metric or VarianceRatioMetric()
         self._ks_test = ks_test or KolmogorovSmirnovBalanceTest()
-        self._chi_square_test = chi_square_test or ChiSquareBalanceTest()
+        self._chi_square = chi_square or ChiSquareBalanceTest()
         self._jensen_shannon_metric = jensen_shannon_metric or JensenShannonBalanceMetric()
 
     def compute(
@@ -61,7 +61,7 @@ class BalanceDiagnosticsService:
             table = table.join(self._ks_test.compute(df_after, treatment_column, all_covariates), on="variable", how="left")
 
         if "chi_square" in balance_metrics:
-            table = table.join(self._chi_square_test.compute(df_after, treatment_column, all_covariates), on="variable", how="left")
+            table = table.join(self._chi_square.compute(df_after, treatment_column, all_covariates), on="variable", how="left")
 
         if "jensen_shannon" in balance_metrics:
             table = table.join(self._jensen_shannon_metric.compute(df_after, treatment_column, all_covariates),

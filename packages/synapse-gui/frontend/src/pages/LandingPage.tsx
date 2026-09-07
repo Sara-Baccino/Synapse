@@ -88,7 +88,7 @@ export function LandingPage() {
   };
 
   return (
-    <div className="relative min-h-screen w-full text-slate-800 font-['Manrope',sans-serif] selection:bg-pink-200 selection:text-blue-700">
+    <div className="relative min-h-screen w-full text-slate-800 font-['Manrope',sans-serif] selection:bg-purple-300 selection:text-blue-700">
       {/* Import dei font e stili per l'animazione della Data Wave */}
       <link
         rel="stylesheet"
@@ -134,7 +134,7 @@ export function LandingPage() {
           <div>
             <button
               onClick={() => navigate("/login")}
-              className="text-xs font-semibold px-4 py-2.5 rounded-lg bg-gradient-to-r from-purple-600 via-pink-600 to-amber-400 text-white shadow-md hover:opacity-90 hover:shadow-lg transition duration-200"
+              className="text-xs font-semibold px-4 py-2.5 rounded-lg bg-blue-600 text-white shadow-md hover:opacity-90 hover:shadow-lg transition duration-200"
             >
               Access Workspace
             </button>
@@ -144,7 +144,7 @@ export function LandingPage() {
         {/* 2. HERO SECTION */}
         <section id="hero" className="pt-36 pb-24 px-6 text-center max-w-6xl mx-auto flex flex-col items-center justify-center min-h-[90vh]">
           <div className="max-w-4xl mx-auto flex flex-col items-center">
-            <h1 className="text-6xl sm:text-7xl lg:text-8xl font-extrabold tracking-tight mb-8 pb-2 leading-normal select-none bg-gradient-to-r from-violet-500 via-pink-500 to-amber-400 bg-clip-text text-transparent">
+            <h1 className="text-6xl sm:text-7xl lg:text-8xl font-extrabold tracking-tight mb-8 pb-2 leading-normal select-none bg-gradient-to-r from-blue-600 via-blue-400 to-purple-400 bg-clip-text text-transparent">
               Synapse
             </h1>
 
@@ -162,25 +162,25 @@ export function LandingPage() {
             <div className="flex flex-col sm:flex-row items-center gap-4 mb-16">
               <button
                 onClick={() => scrollToSection("overview")}
-                className="bg-white/80 backdrop-blur-sm border border-white/60 hover:bg-white text-slate-800 font-semibold px-8 py-3.5 rounded-xl transition duration-200 shadow-sm hover:shadow"
+                className="bg-white/80 backdrop-blur-sm border border-white/70 hover:bg-white text-slate-800 font-semibold px-8 py-3.5 rounded-xl transition duration-200 shadow-sm hover:shadow"
               >
                 Learn How It Works ↓
               </button>
               <button
                 onClick={() => scrollToSection("demo")}
-                className="bg-gradient-to-r from-purple-600 via-pink-600 to-amber-400 hover:opacity-90 text-white font-semibold px-8 py-3.5 rounded-xl shadow-md transition duration-200 hover:shadow-lg hover:scale-[1.02]">
+                className="bg-blue-700 hover:opacity-90 text-white font-semibold px-8 py-3.5 rounded-xl shadow-md transition duration-200 hover:shadow-lg hover:scale-[1.02]">
                 Try the Free Demo
               </button>
             </div>
 
             <div className="flex flex-wrap items-center justify-center gap-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">
-              <span className="px-3 py-1 rounded-full bg-white/70 backdrop-blur-sm text-blue-600 border border-white/50">Define</span>
+              <span className="px-3 py-1 rounded-full bg-white/70 backdrop-blur-sm text-blue-700 border border-white/50">Define</span>
               <span>·</span>
-              <span className="px-3 py-1 rounded-full bg-white/70 backdrop-blur-sm text-purple-600 border border-white/50">Match</span>
+              <span className="px-3 py-1 rounded-full bg-white/70 backdrop-blur-sm text-blue-500 border border-white/50">Match</span>
               <span>·</span>
-              <span className="px-3 py-1 rounded-full bg-white/70 backdrop-blur-sm text-pink-600 border border-white/50">Diagnose</span>
+              <span className="px-3 py-1 rounded-full bg-white/70 backdrop-blur-sm text-purple-400 border border-white/50">Diagnose</span>
               <span>·</span>
-              <span className="px-3 py-1 rounded-full bg-white/70 backdrop-blur-sm text-yellow-600 border border-white/50">Compare</span>
+              <span className="px-3 py-1 rounded-full bg-white/70 backdrop-blur-sm text-purple-600 border border-white/50">Compare</span>
             </div>
           </div>
         </section>
@@ -189,7 +189,7 @@ export function LandingPage() {
         <section id="overview" className="w-full py-24 px-6 border-t border-white/40 bg-white/40 backdrop-blur-md">
           <div className="max-w-5xl mx-auto">
             <div className="text-center max-w-3xl mx-auto mb-16">
-              <h2 className="text-xs font-semibold uppercase tracking-widest bg-gradient-to-r from-purple-600 to-amber-400 bg-clip-text text-transparent mb-6">
+              <h2 className="text-xs font-semibold uppercase tracking-widest bg-gradient-to-r from-purple-600 to-purple-400 bg-clip-text text-transparent mb-6">
                 Overview
               </h2>
 
@@ -198,7 +198,7 @@ export function LandingPage() {
               </h3>
 
               <p className="text-lg sm:text-2xl text-slate-800 font-semibold leading-relaxed mb-8">
-                <span className="bg-gradient-to-r from-purple-600 to-amber-500 bg-clip-text text-transparent">
+                <span className="bg-blue-700 bg-clip-text text-transparent">
                   An interactive environment for population matching.
                 </span>
               </p>
@@ -209,7 +209,7 @@ export function LandingPage() {
                 
 
                 <p className="text-lg sm:text-2xl text-slate-800 font-semibold leading-relaxed mb-8">
-                <span className="bg-gradient-to-r from-purple-600 to-amber-500 bg-clip-text text-transparent">
+                <span className="bg-blue-700 bg-clip-text text-transparent">
                   Good matching is not just about finding pairs. It's about understanding whether they are comparable.
                 </span>
               </p>
@@ -226,7 +226,7 @@ export function LandingPage() {
                   { title: "Diagnose Comparability", desc: "Evaluate balance, overlap, matching rates, unmatched observations and the quality of the resulting pairs." },
                 ].map((cat) => (
                   <div key={cat.title} className="bg-white/70 backdrop-blur-md border border-white/50 p-6 rounded-xl shadow-sm">
-                    <h5 className="text-2xl font-semibold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent mb-2">
+                    <h5 className="text-2xl font-semibold bg-blue-500 bg-clip-text text-transparent mb-2">
                       {cat.title}
                     </h5>
                     <p className="text-xs text-slate-600 leading-relaxed">
@@ -238,7 +238,7 @@ export function LandingPage() {
 
             <div className="text-center max-w-3xl mx-auto mb-12">
             
-            <h4 className="text-xs font-semibold uppercase tracking-widest bg-gradient-to-r from-purple-600 to-amber-400 bg-clip-text text-transparent mb-6">
+            <h4 className="text-xs font-semibold uppercase tracking-widest bg-gradient-to-r from-purple-600 to-purple-400 bg-clip-text text-transparent mb-6">
                 A matching workflow you can inspect and refine
             </h4>
 
@@ -247,7 +247,7 @@ export function LandingPage() {
             </h3>
 
               <p className="text-base sm:text-2xl text-slate-600 font-semibold leading-relaxed mb-4">
-                <span className="bg-gradient-to-r from-purple-600 to-amber-500 bg-clip-text text-transparent">
+                <span className="bg-blue-700 bg-clip-text text-transparent">
                   There is no single definition of a good match.
                 </span>
               </p>
@@ -259,7 +259,7 @@ export function LandingPage() {
               </p>
 
               <p className="text-base sm:text-2xl text-slate-600 font-semibold leading-relaxed mb-4">
-                <span className="bg-gradient-to-r from-purple-600 to-amber-500 bg-clip-text text-transparent">
+                <span className="bg-blue-700 bg-clip-text text-transparent">
                   A match is the beginning of the evaluation, not the end.
                 </span>
               </p>
@@ -273,12 +273,12 @@ export function LandingPage() {
 
             
               <div className="flex flex-col items-center">
-                <span className="bg-gradient-to-r from-purple-600 via-pink-600 to-amber-400 bg-clip-text text-transparent font-extrabold text-sm">
+                <span className="bg-gradient-to-r  from-blue-600 via-blue-400 to-purple-400 bg-clip-text text-transparent font-extrabold text-sm">
                   Synapse
                 </span>
                 <div className="w-0.5 h-8 bg-slate-300 my-1"></div>
 
-                <div className="px-5 py-2 rounded-lg bg-white/80 border border-white/60 text-blue-700 text-xs font-medium shadow-xs">
+                <div className="px-5 py-2 rounded-lg bg-white/80 border border-white/60 text-slate-800 text-xs font-medium shadow-xs">
                   DEFINE TWO POPULATIONS
                 </div>
 
@@ -289,7 +289,7 @@ export function LandingPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl">
                   <div className="flex flex-col items-center bg-white/80 border border-white/60 p-5 rounded-xl shadow-xs">
-                    <span className="text-xs font-semibold text-purple-600 tracking-wider mb-2">REPRESENT</span>
+                    <span className="text-xs font-semibold text-slate-800 tracking-wider mb-2">REPRESENT</span>
                     <div className="w-full border-t border-slate-200 my-2"></div>
                     <ul className="text-xs text-slate-600 space-y-1 text-center font-normal">
                       <li>Covariates</li>
@@ -297,7 +297,7 @@ export function LandingPage() {
                     </ul>
                   </div>
                   <div className="flex flex-col items-center bg-white/80 border border-white/60 p-5 rounded-xl shadow-xs">
-                    <span className="text-xs font-semibold text-pink-600 tracking-wider mb-2">MEASURE</span>
+                    <span className="text-xs font-semibold text-slate-800 tracking-wider mb-2">MEASURE</span>
                     <div className="w-full border-t border-slate-200 my-2"></div>
                     <ul className="text-xs text-slate-600 space-y-1 text-center font-normal">
                       <li>Distance</li>
@@ -305,7 +305,7 @@ export function LandingPage() {
                     </ul>
                   </div>
                   <div className="flex flex-col items-center bg-white/80 border border-white/60 p-5 rounded-xl shadow-xs">
-                    <span className="text-xs font-semibold text-yellow-600 tracking-wider mb-2">CONSTRAIN</span>
+                    <span className="text-xs font-semibold text-slate-800 tracking-wider mb-2">CONSTRAIN</span>
                     <div className="w-full border-t border-slate-200 my-2"></div>
                     <ul className="text-xs text-slate-600 space-y-1 text-center font-normal">
                       <li>Exact Match</li>
@@ -331,7 +331,7 @@ export function LandingPage() {
               </div>
 
               <p className="text-base sm:text-lg text-slate-600 font-semibold leading-relaxed mt-10">
-                One workspace. Multiple matching strategie. Inspectable results.
+                One workspace. Multiple matching strategies. Inspectable results.
               </p>
 
             </div>
@@ -343,14 +343,14 @@ export function LandingPage() {
         <section id="modules" className="w-full py-24 px-6 border-t border-white/40 bg-white/30 backdrop-blur-sm">
           <div className="max-w-6xl mx-auto">
             <div className="text-center mb-4">
-              <h4 className="text-xs font-semibold uppercase tracking-widest bg-gradient-to-r from-purple-600 to-amber-400 bg-clip-text text-transparent mb-6">
+              <h4 className="text-xs font-semibold uppercase tracking-widest bg-gradient-to-r from-purple-600 to-purple-400 bg-clip-text text-transparent mb-6">
                 Analysis Tools
               </h4>
               <h3 className="text-3xl sm:text-4xl font-semibold text-slate-800 mb-10">
                 Explore how populations can be  <br/> represented, compared and matched.
               </h3>
               <p className="text-lg sm:text-xl text-slate-800 font-semibold leading-relaxed mb-6">
-                <span className="bg-gradient-to-r from-purple-600 to-amber-500 bg-clip-text text-transparent">
+                <span className="bg-blue-700 bg-clip-text text-transparent">
                   Specialized tools. Connected analysis.
                 </span>
               </p>
@@ -380,7 +380,7 @@ export function LandingPage() {
                   className="group bg-white/70 backdrop-blur-md border border-white/50 hover:border-purple-400 p-6 rounded-xl flex flex-col justify-between cursor-pointer transition duration-200 shadow-sm hover:shadow-md hover:scale-[1.01]"
                 >
                   <div>
-                    <h4 className="text-lg font-semibold text-slate-800 mb-2 group-hover:text-amber-600 transition">
+                    <h4 className="text-lg font-semibold text-slate-800 mb-2 group-hover:text-pink-500 transition">
                       {mod.title}
                     </h4>
                     <p className="text-xs text-slate-800 mb-4 leading-relaxed font-normal">
@@ -394,7 +394,7 @@ export function LandingPage() {
                       ))}
                     </div>
                   </div>
-                  <div className="text-xs font-semibold bg-gradient-to-r from-purple-600 via-pink-500 to-amber-500 bg-clip-text text-transparent flex items-center gap-1 group-hover:translate-x-1 transition">
+                  <div className="text-xs font-semibold bg-gradient-to-r from-purple-700 via-pink-500 to-blue-400 bg-clip-text text-transparent flex items-center gap-1 group-hover:translate-x-1 transition">
                     Explore →
                   </div>
                 </div>
@@ -407,7 +407,7 @@ export function LandingPage() {
         {/* 5. DEMO SECTION */}
         <section id="demo" className="w-full min-h-screen flex flex-col items-center justify-center px-6 border-t border-white/40 bg-white/40 backdrop-blur-md py-20">
           <div className="max-w-4xl w-full bg-white/60 backdrop-blur-xl border border-white/80 shadow-[0_8px_32px_rgba(37,99,235,0.05)] p-12 sm:p-16 rounded-3xl text-center">
-            <span className="text-xs font-bold uppercase tracking-widest bg-gradient-to-r from-purple-600 to-amber-400 bg-clip-text text-transparent mb-3 inline-block mb-8">
+            <span className="text-xs font-bold uppercase tracking-widest bg-gradient-to-r from-purple-600 to-purple-400 bg-clip-text text-transparent inline-block mb-8">
               Interactive Playground
             </span>
             <h2 className="text-3xl sm:text-5xl font-semibold text-slate-800 mb-8">
@@ -422,7 +422,7 @@ export function LandingPage() {
                 sessionStorage.setItem("landing_last_section", "demo");
                 navigate("/demo");
               }}
-              className="bg-gradient-to-r from-purple-600 via-pink-600 to-amber-400 hover:opacity-90 text-white font-semibold text-base px-10 py-4 rounded-xl transition duration-200 shadow-md hover:shadow-lg hover:scale-[1.02]"
+              className="bg-gradient-to-r  from-blue-600 via-blue-400 to-purple-400 hover:opacity-90 text-white font-semibold text-base px-10 py-4 rounded-xl transition duration-200 shadow-md hover:shadow-lg hover:scale-[1.02]"
             >
               Start Demo
             </button>
@@ -433,7 +433,7 @@ export function LandingPage() {
         <section id="workspace" className="w-full py-24 px-6 border-t border-white/40 bg-white/30 backdrop-blur-sm scroll-mt-16">
           <div className="max-w-4xl mx-auto">
             <div className="text-center mb-10">
-              <h2 className="text-xs font-semibold uppercase tracking-widest bg-gradient-to-r from-purple-600 to-amber-400 bg-clip-text text-transparent mb-6">
+              <h2 className="text-xs font-semibold uppercase tracking-widest bg-gradient-to-r  from-purple-600 to-purple-400 bg-clip-text text-transparent mb-6">
                 Private Workspace
               </h2>
               <h3 className="text-3xl sm:text-4xl font-semibold text-slate-800">
@@ -453,7 +453,7 @@ export function LandingPage() {
 
             {/* LOGIN FORM */}
             <div id="workspace-login" className="max-w-md mx-auto bg-white/80 backdrop-blur-lg border border-white/60 p-8 sm:p-10 rounded-2xl shadow-md">
-              <h4 className="text-xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-amber-400 bg-clip-text text-transparent mb-6 text-center">
+              <h4 className="text-xl font-bold bg-gradient-to-r  from-purple-600 to-purple-400 bg-clip-text text-transparent mb-6 text-center">
                 Sign in to Workspace
               </h4>
               
@@ -489,7 +489,7 @@ export function LandingPage() {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full bg-gradient-to-r from-purple-600 via-pink-600 to-amber-400 hover:opacity-90 text-white font-semibold py-2.5 rounded-lg transition disabled:opacity-50 mt-2 shadow-md hover:shadow-lg"
+                  className="w-full bg-gradient-to-r from-blue-600 via-blue-400 to-purple-400 hover:opacity-90 text-white font-semibold py-2.5 rounded-lg transition disabled:opacity-50 mt-2 shadow-md hover:shadow-lg"
                 >
                   {isSubmitting ? "Authenticating..." : "Open Workspace"}
                 </button>

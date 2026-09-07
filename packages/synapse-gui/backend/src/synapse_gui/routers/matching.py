@@ -16,6 +16,7 @@ same as structure.py does.
 from __future__ import annotations
 
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -24,18 +25,19 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from synapse_core.models.analysis_result import AnalysisResult
+from synapse_core.models.data_config import DataConfig
 from synapse_core.pipeline.base_pipeline import BasePipeline
 from synapse_reporting.report_manager import ReportManager
 from synapse_core.dataset.preprocessing import Preprocessing
 
 from synapse_gui.routers.auth import CurrentUserResponse, get_current_user
+from synapse_gui.routers.datasets import _data_config_to_dto
 from synapse_gui.services.dataset_store import DatasetNotFoundError, dataset_store
 from synapse_gui.services.job_manager import (
     JobNotFoundError, JobProgressReporter, JobStatus, job_manager,
 )
 
 from synapse_matching.config.matching_module_config import MatchingModuleConfig
-from synapse_matching.exceptions import UnsupportedCapabilityError
 from synapse_matching.pipeline.matching_module import MatchingModule
 from synapse_matching.exploration.population_profile import PopulationProfiler
 
@@ -44,6 +46,16 @@ __all__ = ["router"]
 router = APIRouter(prefix="/matching", tags=["matching"])
 
 _PREVIEW_ROW_LIMIT = 20
+
+RUNS_DIR = Path(tempfile.gettempdir()) / "synapse_runs"
+"""Where each job's full AnalysisResult is persisted (save_analysis_result:
+tables/datasets as parquet, artifacts as joblib, summary+manifest as JSON),
+one subfolder per job_id. Process-local temp dir for now -- the minimal
+persistence solution requested: no database, but runs survive past the
+in-memory JobManager/AnalysisResult object being garbage-collected, and
+GET /matching/jobs/{id}/result can be served straight from JobManager while
+the process is alive, or reconstructed via load_analysis_result from here
+if it isn't."""
 
 
 # ---------------------------------------------------------------------- #
@@ -86,6 +98,19 @@ class MetricValue:
     pass  # float | int | str | bool at runtime; kept loose here like structure.py's MetricValue
 
 
+class MatchingJobSummaryDTO(BaseModel):
+    job_id: str
+    status: JobStatus
+    created_at: datetime
+    dataset_id: str | None
+    matching_algorithm: str | None = None
+    distance_metric: str | None = None
+    use_propensity_score: bool | None = None
+    matching_direction: str | None = None
+    metrics: dict[str, float | int | str | bool] = Field(default_factory=dict)
+    error: str | None = None
+
+
 class MatchingResultResponse(BaseModel):
     job_id: str
     status: JobStatus
@@ -95,6 +120,12 @@ class MatchingResultResponse(BaseModel):
     tables: list[DataFramePreviewDTO]
     datasets: list[DataFramePreviewDTO]
     runtime_seconds: float | None
+    config: dict[str, Any] = Field(default_factory=dict)
+    """Full provenance for this run: data_config (per-column imputation/
+    scaling/encoding actually applied) and module_config (matching design),
+    both already stored on AnalysisResult.config by BasePipeline -- this
+    field just exposes them at the single-job level (list_matching_jobs
+    already reads the same source for its summary)."""
 
 
 # ---------------------------------------------------------------------- #
@@ -111,7 +142,7 @@ def _serialize_validation_errors(exc: ValidationError) -> list[dict[str, Any]]:
     return serialized
 
 
-def _build_matching_job_target(dataset_id: str, module_config: MatchingModuleConfig):
+def _build_matching_job_target(job_id: str, dataset_id: str, module_config: MatchingModuleConfig):
     def target(reporter: JobProgressReporter) -> AnalysisResult:
         reporter.update("Loading dataset and configuration...", percentage=5.0)
         record = dataset_store.get(dataset_id)
@@ -129,7 +160,14 @@ def _build_matching_job_target(dataset_id: str, module_config: MatchingModuleCon
                 dataset_path=tmp_path,
                 data_config=record.data_config,
                 module_config=module_config,
-                apply_imputation=False,
+                # Whether imputation actually runs on any given column is
+                # controlled per-column by DataConfig
+                # (missing_data_management.strategy == IMPUTE); columns left
+                # at MAINTAIN/DROP/REPLACE are untouched by Imputation. This
+                # flag only turns the *step* on so a configured strategy is
+                # never silently skipped by the GUI's matching pipeline.
+                apply_imputation=True,
+                output_folder=RUNS_DIR / job_id,
             )
             result = pipeline.run()
         finally:
@@ -139,6 +177,26 @@ def _build_matching_job_target(dataset_id: str, module_config: MatchingModuleCon
         return result
 
     return target
+
+
+def _normalized_result_config(result: AnalysisResult) -> dict[str, Any]:
+    """AnalysisResult.config stores data_config as a plain dict keyed by
+    column name (DataConfig.to_dict()'s native shape). Every other place
+    that exposes column configuration over the API (parse-config) uses a
+    list-of-columns-with-a-name-field shape instead (DataConfigDTO). Left
+    as-is, a caller reading data_config from a job result vs. from
+    parse-config would have to handle two different JSON shapes for the
+    same concept. Re-serializing through the same DTO here makes the API
+    self-consistent; module_config/execution_context are left untouched.
+    """
+    config = dict(result.config or {})
+    raw_data_config = config.get("data_config")
+    if isinstance(raw_data_config, dict):
+        try:
+            config["data_config"] = _data_config_to_dto(DataConfig.model_validate(raw_data_config)).model_dump(mode="json")
+        except Exception:
+            pass  # fall back to the raw shape rather than breaking the whole response
+    return config
 
 
 def _dataframe_to_preview_dto(name: str, dataframe) -> DataFramePreviewDTO:
@@ -171,11 +229,39 @@ def run_matching_module(
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=_serialize_validation_errors(exc)) from exc
 
-    job_id = job_manager.create_job()
-    target = _build_matching_job_target(request.dataset_id, module_config)
+    job_id = job_manager.create_job(dataset_id=request.dataset_id)
+    target = _build_matching_job_target(job_id, request.dataset_id, module_config)
     background_tasks.add_task(job_manager.run_job, job_id, target)
 
     return MatchingRunResponse(job_id=job_id)
+
+@router.get("/jobs", response_model=list[MatchingJobSummaryDTO])
+def list_matching_jobs(current_user: CurrentUserResponse = Depends(get_current_user)) -> list[MatchingJobSummaryDTO]:
+    """Lists every matching job known to this process, most recent first,
+    with just enough of each run's configuration and top-line metrics to
+    support a Compare Runs view. No new fields were added to AnalysisResult
+    or MatchingOutput for this: everything below is read out of
+    `result.config["module_config"]` and `result.metrics`, both of which
+    BasePipeline/MatchingModule already populate on every run.
+    """
+    summaries: list[MatchingJobSummaryDTO] = []
+    for record in job_manager.list_jobs():
+        summary = MatchingJobSummaryDTO(
+            job_id=record.job_id, status=record.status,
+            created_at=record.created_at, dataset_id=record.dataset_id,
+            error=record.error,
+        )
+        result = record.result
+        if isinstance(result, AnalysisResult):
+            module_config = result.config.get("module_config") or {}
+            summary.matching_algorithm = module_config.get("strategy", {}).get("matching_algorithm")
+            summary.distance_metric = module_config.get("distance", {}).get("distance_metric")
+            summary.use_propensity_score = module_config.get("representation", {}).get("use_propensity_score")
+            summary.matching_direction = module_config.get("population", {}).get("matching_direction")
+            summary.metrics = result.metrics
+        summaries.append(summary)
+    return summaries
+
 
 class ExploreRequest(BaseModel):
     dataset_id: str
@@ -233,7 +319,7 @@ def get_job_result(job_id: str, current_user: CurrentUserResponse = Depends(get_
         raise HTTPException(status_code=409, detail=f"Job '{job_id}' is not finished yet (status='{record.status.value}').")
 
     if record.status == JobStatus.FAILED:
-        return MatchingResultResponse(job_id=job_id, status=record.status, success=False, error=record.error, metrics={}, tables=[], datasets=[], runtime_seconds=None)
+        return MatchingResultResponse(job_id=job_id, status=record.status, success=False, error=record.error, metrics={}, tables=[], datasets=[], runtime_seconds=None, config={})
 
     result = record.result
     
@@ -273,7 +359,8 @@ def get_job_result(job_id: str, current_user: CurrentUserResponse = Depends(get_
         metrics=getattr(result, "metrics", {}),
         tables=tables_list,
         datasets=datasets_list,
-        runtime_seconds=getattr(result, "runtime_seconds", None)
+        runtime_seconds=getattr(result, "runtime_seconds", None),
+        config=_normalized_result_config(result),
     )
 
 

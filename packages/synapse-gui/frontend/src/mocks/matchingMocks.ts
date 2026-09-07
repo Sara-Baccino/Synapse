@@ -78,11 +78,11 @@ export const MOCK_RESULT = {
     { variable: "region", is_matching_covariate: false, smd_before: 0.22, smd_after: 0.19 },
   ],
   overlap: { treated_ps_min: 0.08, treated_ps_max: 0.91, control_ps_min: 0.04, control_ps_max: 0.85, common_support_min: 0.08, common_support_max: 0.85 },
-  pairDiagnostics: {
+  pair_diagnostics: {
     n_pairs: 98, mean_distance: 0.042, median_distance: 0.031, min_distance: 0.001, max_distance: 0.198,
     p25_distance: 0.015, p75_distance: 0.058, n_pool_units_reused: 3,
   },
-  matchedPreview: {
+  matched_data_preview: {
     columns: ["patient_id", "age", "clinical_score", "treatment", "pair_id", "weights"],
     rows: [
       { patient_id: 12, age: 58, clinical_score: 29.4, treatment: 1, pair_id: 0, weights: 1.0 },

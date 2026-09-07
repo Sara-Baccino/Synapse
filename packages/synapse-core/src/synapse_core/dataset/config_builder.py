@@ -109,15 +109,78 @@ class ConfigBuilder:
         if is_id:
             return ColumnInfo(new_name=column_name, id=True, type=column_type)
 
-        is_numeric = dtype.is_numeric()
         is_temporal = column_type in (ColumnType.DATE, ColumnType.DATETIME)
+        if is_temporal:
+            return ColumnInfo(new_name=column_name, type=column_type)
+
+        categorical, numerical, semantic_roles = ConfigBuilder._infer_semantic_type(series, dtype)
 
         return ColumnInfo(
             new_name=column_name,
-            numerical=is_numeric,
-            categorical=(not is_numeric and not is_temporal),
+            numerical=numerical,
+            categorical=categorical,
+            semantic_roles=semantic_roles,
             type=column_type,
         )
+
+    @staticmethod
+    def _infer_semantic_type(
+        series: pl.Series, dtype: pl.DataType
+    ) -> tuple[bool, bool, set[str]]:
+        """Infer the categorical/numerical flag plus a descriptive semantic tag.
+
+        This is the single, explicit, conservative rule used whenever no
+        DataConfig is supplied by the user (a user-provided DataConfig
+        always takes precedence and never goes through this method):
+
+        - `pl.Boolean` columns, and numeric columns whose non-null distinct
+          values are a subset of {0, 1}, are treated as `binary` categorical
+          (`categorical=True`, `numerical=False`). This is the fix for the
+          case this method used to get wrong: a 0/1-coded flag is a
+          dichotomous category, not a continuous measurement, even though
+          its physical dtype is numeric.
+        - Other numeric integer dtypes are tagged `discrete` (still
+          `numerical=True`).
+        - Other numeric float dtypes are tagged `continuous` if any non-null
+          value has a fractional part, otherwise `discrete` (still
+          `numerical=True` either way -- this only changes the descriptive
+          tag, never the operational flag, since a whole-valued float is
+          still a genuine measurement, not a category).
+        - Everything else (string/category dtypes) is `categorical=True`
+          with no automatic tag: nominal vs. ordinal cannot be inferred from
+          values alone and is intentionally left for the user to declare
+          explicitly (e.g. via `encoding.order`).
+
+        No other heuristic is applied. An empty/all-null column falls back
+        to the dtype-only classification with no semantic tag, since there
+        is no data to conservatively judge a role from.
+        """
+        if dtype == pl.Boolean:
+            return True, False, {"binary"}
+
+        if not dtype.is_numeric():
+            return True, False, set()
+
+        non_null = series.drop_nulls()
+        if non_null.len() == 0:
+            # No data to inspect: keep the dtype-only classification, no tag.
+            return False, True, set()
+
+        distinct_values = set(non_null.unique().to_list())
+        if distinct_values.issubset({0, 1}):
+            return True, False, {"binary"}
+
+        is_integer_dtype = dtype in (
+            pl.Int8, pl.Int16, pl.Int32, pl.Int64,
+            pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
+        )
+        if is_integer_dtype:
+            return False, True, {"discrete"}
+
+        # Float dtype, non-binary: discrete if every value is whole-numbered,
+        # continuous otherwise.
+        has_fractional_part = bool((non_null != non_null.floor()).any())
+        return False, True, ({"continuous"} if has_fractional_part else {"discrete"})
 
     @staticmethod
     def _map_polars_dtype(dtype: pl.DataType) -> ColumnType | None:

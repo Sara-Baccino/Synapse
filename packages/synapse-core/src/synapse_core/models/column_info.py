@@ -242,4 +242,9 @@ class ColumnInfo(BaseModel):
             raise ValueError(
                 f"Column '{self.new_name}': encoding is only meaningful for categorical columns."
             )
+        if self.scaling.enabled and self.categorical:
+            raise ValueError(
+                f"Column '{self.new_name}': scaling is only meaningful for numerical columns, "
+                "not categorical ones (including binary 0/1 columns) -- use encoding instead."
+            )
         return self

@@ -48,6 +48,11 @@ class JobRecord(BaseModel):
     error: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    dataset_id: str | None = None
+    """Optional, caller-supplied provenance: which dataset this job ran
+    against. Not used by JobManager itself, only carried through so
+    listing/comparison endpoints don't need to reach into `result` (which
+    doesn't exist yet for pending/running/failed-before-fit jobs)."""
 
 
 class JobNotFoundError(Exception):
@@ -68,10 +73,10 @@ class JobManager:
         self._jobs: dict[str, JobRecord] = {}
         self._lock = threading.Lock()
 
-    def create_job(self) -> str:
+    def create_job(self, dataset_id: str | None = None) -> str:
         job_id = str(uuid4())
         with self._lock:
-            self._jobs[job_id] = JobRecord(job_id=job_id)
+            self._jobs[job_id] = JobRecord(job_id=job_id, dataset_id=dataset_id)
         return job_id
 
     def get_job(self, job_id: str) -> JobRecord:
@@ -80,6 +85,15 @@ class JobManager:
         if record is None:
             raise JobNotFoundError(f"No job found with id '{job_id}'.")
         return record.model_copy(deep=True)
+
+    def list_jobs(self) -> list[JobRecord]:
+        """All jobs known to this process, most recent first. In-memory
+        and process-local by design (same scope as the rest of JobManager)
+        -- durable persistence of each job's AnalysisResult is handled
+        separately, on disk, via `output_folder`/`save_analysis_result`."""
+        with self._lock:
+            records = list(self._jobs.values())
+        return sorted((r.model_copy(deep=True) for r in records), key=lambda r: r.created_at, reverse=True)
 
     def run_job(self, job_id: str, target: Callable[[JobProgressReporter], Any]) -> None:
         self._set_status(job_id, JobStatus.RUNNING)

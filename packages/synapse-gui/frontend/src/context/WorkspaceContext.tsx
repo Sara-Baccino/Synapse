@@ -2,14 +2,16 @@
  * synapse-gui frontend WorkspaceContext
  * -------------------------------------------
  *
- * Holds two independent concerns:
+ * Holds three independent concerns:
  *  1. Dataset Cart -- every dataset uploaded/promoted in this session,
  *     recycled from SynClair.
  *  2. PopulationSelection -- how the two populations to compare are
  *     currently defined: either one dataset split by a treatment/group
  *     column, or two separate datasets. A single discriminated union,
  *     not two parallel disconnected states, per the Phase A decision.
- *  3. Run history (runs[] + currentRunId) -- every matching run
+ *  3. Matching Design Config -- shared configuration state for the
+ *     matching strategy (direction, distance metrics, algorithm, etc.).
+ *  4. Run history (runs[] + currentRunId) -- every matching run
  *     executed in this session is appended, never overwritten, so
  *     Compare Runs can look back at any of them. Session-only (no
  *     server-side persistence), matching the rest of this Context.
@@ -65,11 +67,36 @@ export interface RunEntry {
   populationSelectionSnapshot: PopulationSelection;
 }
 
+export type BalanceMetricType = "smd" | "variance_ratio" | "ks_test" | "chi_square" | "jensen_shannon";
+
+export interface MatchingDesignState {
+  matchingDirection: "treated_to_control" | "control_to_treated";
+  usePropensityScore: boolean;
+  matchingSpace: "covariates_only" | "ps_only" | "logit_ps_only" | "hybrid_covariates_and_ps";
+  distanceMetric: "euclidean" | "mahalanobis" | "gower" | "weighted_hybrid";
+  matchingAlgorithm: "greedy_nn" | "optimal_hungarian";
+  allowReplacement: boolean;
+  caliperValue: string;
+  balanceMetrics: BalanceMetricType[];
+}
+
+const DEFAULT_MATCHING_DESIGN: MatchingDesignState = {
+  matchingDirection: "treated_to_control",
+  usePropensityScore: true,
+  matchingSpace: "covariates_only",
+  distanceMetric: "euclidean",
+  matchingAlgorithm: "greedy_nn",
+  allowReplacement: false,
+  caliperValue: "",
+  balanceMetrics: ["smd"],
+};
+
 interface WorkspaceContextValue {
   cart: CartDatasetEntry[];
   dataConfigs: Record<string, DataConfigDTO>;
+  dataConfigByDatasetId: Record<string, DataConfigDTO>;
   selectedModuleId: string | null;
-
+  matchingDesign: MatchingDesignState;
   populationSelection: PopulationSelection | null;
 
   runs: RunEntry[];
@@ -78,9 +105,11 @@ interface WorkspaceContextValue {
   addToCart: (entry: Omit<CartDatasetEntry, "addedAt">) => void;
   removeFromCart: (datasetId: string) => void;
   setDataConfigFor: (datasetId: string, dataConfig: DataConfigDTO) => void;
+  setDataConfigForDataset: (datasetId: string, config: DataConfigDTO) => void;
   setSelectedModule: (moduleId: string) => void;
 
   setPopulationSelection: (selection: PopulationSelection) => void;
+  setMatchingDesign: (patch: Partial<MatchingDesignState>) => void;
 
   addRun: (run: Omit<RunEntry, "id" | "createdAt">) => void;
   setCurrentRun: (runId: string) => void;
@@ -99,11 +128,16 @@ function generateLocalId(): string {
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [cart, setCart] = useState<CartDatasetEntry[]>([]);
-  const [dataConfigs, setDataConfigs] = useState<Record<string, DataConfigDTO>>({});
+  const [dataConfigByDatasetId, setDataConfigByDatasetId] = useState<Record<string, DataConfigDTO>>({});
   const [selectedModuleId, setSelectedModuleIdState] = useState<string | null>(null);
   const [populationSelection, setPopulationSelectionState] = useState<PopulationSelection | null>(null);
   const [runs, setRuns] = useState<RunEntry[]>([]);
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
+  const [matchingDesign, setMatchingDesignState] = useState<MatchingDesignState>(DEFAULT_MATCHING_DESIGN);
+
+  function setMatchingDesign(patch: Partial<MatchingDesignState>): void {
+    setMatchingDesignState((prev) => ({ ...prev, ...patch }));
+  }
 
   function addToCart(entry: Omit<CartDatasetEntry, "addedAt">): void {
     setCart((prev) => [...prev.filter((e) => e.datasetId !== entry.datasetId), { ...entry, addedAt: Date.now() }]);
@@ -111,15 +145,20 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   function removeFromCart(datasetId: string): void {
     setCart((prev) => prev.filter((e) => e.datasetId !== datasetId));
-    setDataConfigs((prev) => {
+    setDataConfigByDatasetId((prev) => {
       const next = { ...prev };
       delete next[datasetId];
       return next;
     });
   }
 
+  function setDataConfigForDataset(datasetId: string, config: DataConfigDTO): void {
+    setDataConfigByDatasetId((prev) => ({ ...prev, [datasetId]: config }));
+  }
+
+  // Wrapper di compatibilità per il vecchio metodo setDataConfigFor
   function setDataConfigFor(datasetId: string, dataConfig: DataConfigDTO): void {
-    setDataConfigs((prev) => ({ ...prev, [datasetId]: dataConfig }));
+    setDataConfigForDataset(datasetId, dataConfig);
   }
 
   function setSelectedModule(moduleId: string): void {
@@ -146,19 +185,36 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   function reset(): void {
     setCart([]);
-    setDataConfigs({});
+    setDataConfigByDatasetId({});
     setSelectedModuleIdState(null);
     setPopulationSelectionState(null);
     setRuns([]);
     setCurrentRunId(null);
+    setMatchingDesignState(DEFAULT_MATCHING_DESIGN);
   }
 
   return (
     <WorkspaceContext.Provider
       value={{
-        cart, dataConfigs, selectedModuleId, populationSelection, runs, currentRunId,
-        addToCart, removeFromCart, setDataConfigFor, setSelectedModule,
-        setPopulationSelection, addRun, setCurrentRun, renameRun, reset,
+        cart,
+        dataConfigs: dataConfigByDatasetId, // Mantenuto per compatibilità
+        dataConfigByDatasetId,
+        selectedModuleId,
+        matchingDesign,
+        populationSelection,
+        runs,
+        currentRunId,
+        addToCart,
+        removeFromCart,
+        setDataConfigFor,
+        setDataConfigForDataset,
+        setSelectedModule,
+        setPopulationSelection,
+        setMatchingDesign,
+        addRun,
+        setCurrentRun,
+        renameRun,
+        reset,
       }}
     >
       {children}

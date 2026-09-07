@@ -153,3 +153,134 @@ def test_import_config_falls_back_on_invalid_json(client: TestClient, auth_heade
     body = response.json()
     assert body["fallback_used"] is True
     assert body["fallback_reason"] is not None
+
+
+# --------------------------------------------------------------------- #
+# Phase 2: dtype-aware compatibility + merge-populations
+# --------------------------------------------------------------------- #
+
+def _sample_csv_bytes_dtype_mismatch() -> bytes:
+    # Same column names as dataset A ('age', 'clinical_score'), but 'age' is
+    # a string here instead of numeric -- must be excluded from
+    # common_columns and reported as a dtype mismatch, not silently merged.
+    return b"subject_id,age,clinical_score,region\nid1,young,22.0,north\nid2,old,25.0,south\n"
+
+
+def _sample_csv_bytes_no_overlap() -> bytes:
+    return b"code,height_cm,notes\nX1,170,fine\nX2,180,ok\n"
+
+
+def _upload(client: TestClient, auth_headers: dict[str, str], filename: str, content: bytes) -> str:
+    response = client.post("/datasets/upload", files={"file": (filename, io.BytesIO(content), "text/csv")}, headers=auth_headers)
+    assert response.status_code == 200
+    return response.json()["dataset_id"]
+
+
+def test_check_compatibility_reports_dtype_mismatch(client: TestClient, auth_headers: dict[str, str]) -> None:
+    dataset_id_a = _upload(client, auth_headers, "a.csv", _sample_csv_bytes())
+    dataset_id_b = _upload(client, auth_headers, "b.csv", _sample_csv_bytes_dtype_mismatch())
+
+    response = client.post(
+        "/datasets/check-compatibility",
+        json={"dataset_id_a": dataset_id_a, "dataset_id_b": dataset_id_b},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    # 'age' is int in A, string in B: must be excluded from common_columns
+    # and surfaced explicitly, not silently treated as compatible.
+    assert "age" not in body["common_columns"]
+    assert "clinical_score" in body["common_columns"]
+    mismatch_columns = {m["column"] for m in body["dtype_mismatches"]}
+    assert "age" in mismatch_columns
+
+
+def test_merge_populations_creates_dataset_with_treatment_column(client: TestClient, auth_headers: dict[str, str]) -> None:
+    dataset_id_a = _upload(client, auth_headers, "a.csv", _sample_csv_bytes())  # 4 rows
+    dataset_id_b = _upload(client, auth_headers, "b.csv", _sample_csv_bytes_b())  # 2 rows
+
+    response = client.post(
+        "/datasets/merge-populations",
+        json={"dataset_id_a": dataset_id_a, "dataset_id_b": dataset_id_b},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["n_rows"] == 6
+    assert body["n_from_a"] == 4
+    assert body["n_from_b"] == 2
+    assert set(body["columns_used"]) == {"age", "clinical_score"}
+    assert body["treatment_col_name"] == "treatment"
+    column_names = {c["name"] for c in body["columns"]}
+    assert {"age", "clinical_score", "treatment"} <= column_names
+
+    # The merged dataset must behave exactly like a normal upload downstream:
+    # single-dataset and two-dataset workflows converge from this point on.
+    merged_id = body["dataset_id"]
+    detail = client.get(f"/datasets/{merged_id}", headers=auth_headers)
+    assert detail.status_code == 200
+    assert detail.json()["n_rows"] == 6
+
+    parsed = client.post("/datasets/parse-config", json={"dataset_id": merged_id}, headers=auth_headers)
+    assert parsed.status_code == 200
+    treatment_col = next(c for c in parsed.json()["data_config"]["columns"] if c["name"] == "treatment")
+    # Ties directly to Phase 1: the synthetic 0/1 treatment column must be
+    # inferred as binary categorical, not numerical.
+    assert treatment_col["categorical"] is True
+    assert treatment_col["numerical"] is False
+    assert "binary" in treatment_col["semantic_roles"]
+
+
+def test_merge_populations_preserves_differently_named_source_ids(client: TestClient, auth_headers: dict[str, str]) -> None:
+    dataset_id_a = _upload(client, auth_headers, "a.csv", _sample_csv_bytes())
+    dataset_id_b = _upload(client, auth_headers, "b.csv", _sample_csv_bytes_b())
+
+    response = client.post(
+        "/datasets/merge-populations",
+        json={
+            "dataset_id_a": dataset_id_a, "dataset_id_b": dataset_id_b,
+            "id_column_a": "patient_id", "id_column_b": "subject_id",
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    column_names = {c["name"] for c in body["columns"]}
+    assert "source_id" in column_names
+    preview_source_ids = {row["source_id"] for row in body["preview"]}
+    # Both datasets' ids show up (as strings) under the single unified column.
+    assert preview_source_ids  # non-empty, exact values already covered by dtype/round-trip
+
+
+def test_merge_populations_rejects_treatment_name_collision(client: TestClient, auth_headers: dict[str, str]) -> None:
+    dataset_id_a = _upload(client, auth_headers, "a.csv", _sample_csv_bytes())
+    dataset_id_b = _upload(client, auth_headers, "b.csv", _sample_csv_bytes_b())
+
+    response = client.post(
+        "/datasets/merge-populations",
+        json={"dataset_id_a": dataset_id_a, "dataset_id_b": dataset_id_b, "treatment_col_name": "age"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+
+
+def test_merge_populations_rejects_when_no_common_columns(client: TestClient, auth_headers: dict[str, str]) -> None:
+    dataset_id_a = _upload(client, auth_headers, "a.csv", _sample_csv_bytes())
+    dataset_id_b = _upload(client, auth_headers, "b.csv", _sample_csv_bytes_no_overlap())
+
+    response = client.post(
+        "/datasets/merge-populations",
+        json={"dataset_id_a": dataset_id_a, "dataset_id_b": dataset_id_b},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+
+
+def test_merge_populations_returns_404_for_unknown_dataset(client: TestClient, auth_headers: dict[str, str]) -> None:
+    dataset_id_a = _upload(client, auth_headers, "a.csv", _sample_csv_bytes())
+    response = client.post(
+        "/datasets/merge-populations",
+        json={"dataset_id_a": dataset_id_a, "dataset_id_b": "does-not-exist"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 404

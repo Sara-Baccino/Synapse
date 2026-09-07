@@ -154,7 +154,7 @@ export function DataSection() {
     
     // Navigazione verso lo step di Exploration
     const currentModule = moduleId || "matching";
-    navigate(`/workspace/modules/${currentModule}/exploration`);
+    navigate(`/workspace/modules/${currentModule}/config`);
   }
 
   return (

@@ -13,6 +13,7 @@ import { isPopulationSelectionValid, useWorkspace } from "../../context/Workspac
 
 const SECTIONS = [
   { path: "data", label: "Data" },
+  { path: "config", label: "Config" },
   { path: "exploration", label: "Exploration" },
   { path: "design", label: "Matching Design" },
   { path: "pipeline", label: "Pipeline" },
@@ -27,7 +28,7 @@ export function AnalysisSidebar() {
 
   const hasValidPopulation = isPopulationSelectionValid(populationSelection);
   const hasAnyRun = runs.length > 0;
-  const currentRunCompleted = Boolean(currentRunId); // refined once RunGuard's live status is threaded through in Phase C
+  // const currentRunCompleted = Boolean(currentRunId); // refined once RunGuard's live status is threaded through in Phase C
 
   const nodeState = (path: string): "done" | "current" | "pending" => {
     if (path === "data") return hasValidPopulation ? "done" : "current";
@@ -35,8 +36,10 @@ export function AnalysisSidebar() {
       if (!hasValidPopulation) return "pending";
       return hasAnyRun ? "done" : "current";
     }
-    if (path === "results") return currentRunCompleted ? "done" : "pending";
+    // Permetti la navigazione a Results se c'è una run attiva o uno storico
+    if (path === "results") return currentRunId || hasAnyRun ? "done" : "pending";
     if (path === "compare") return hasAnyRun ? "done" : "pending";
+    if (path === "export") return currentRunId || hasAnyRun ? "done" : "pending";
     return "pending"; // export
   };
 

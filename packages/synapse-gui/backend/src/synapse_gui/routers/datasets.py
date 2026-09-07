@@ -27,7 +27,7 @@ from synapse_core.models.column_info import ColumnInfo
 from synapse_core.models.data_config import DataConfig
 
 from synapse_gui.routers.auth import CurrentUserResponse, get_current_user
-from synapse_gui.services.dataset_compatibility import check_dataset_compatibility
+from synapse_gui.services.dataset_compatibility import check_dataset_compatibility, merge_populations
 from synapse_gui.services.dataset_store import DatasetNotFoundError, dataset_store
 from synapse_gui.services.job_manager import JobNotFoundError, JobStatus, job_manager
 
@@ -154,10 +154,44 @@ class CompatibilityCheckRequest(BaseModel):
     dataset_id_b: str
 
 
+class DtypeMismatchDTO(BaseModel):
+    column: str
+    dtype_a: str
+    dtype_b: str
+
+
 class CompatibilityCheckResponse(BaseModel):
     is_compatible: bool
     common_columns: list[str]
     excluded_id_like_columns: list[str]
+    dtype_mismatches: list[DtypeMismatchDTO] = []
+
+
+class MergePopulationsRequest(BaseModel):
+    dataset_id_a: str = Field(description="Population encoded as treatment=1 in the merged dataset.")
+    dataset_id_b: str = Field(description="Population encoded as treatment=0 in the merged dataset.")
+    treatment_col_name: str = "treatment"
+    columns: list[str] | None = Field(
+        default=None,
+        description="Explicit column subset to keep. Defaults to the common, dtype-compatible columns from check-compatibility.",
+    )
+    id_column_a: str | None = None
+    id_column_b: str | None = None
+    source_id_col_name: str = "source_id"
+    new_filename: str | None = None
+
+
+class MergePopulationsResponse(BaseModel):
+    dataset_id: str
+    filename: str
+    n_rows: int
+    n_columns: int
+    treatment_col_name: str
+    n_from_a: int
+    n_from_b: int
+    columns_used: list[str]
+    columns: list[ColumnPreviewDTO]
+    preview: list[dict[str, Any]]
 
 
 # ---------------------------------------------------------------------- #
@@ -380,6 +414,48 @@ def check_compatibility(
         is_compatible=result.is_compatible,
         common_columns=result.common_columns,
         excluded_id_like_columns=result.excluded_id_like_columns,
+        dtype_mismatches=[
+            DtypeMismatchDTO(column=m.column, dtype_a=m.dtype_a, dtype_b=m.dtype_b) for m in result.dtype_mismatches
+        ],
+    )
+
+
+@router.post("/merge-populations", response_model=MergePopulationsResponse)
+def merge_populations_endpoint(
+    request: MergePopulationsRequest, current_user: CurrentUserResponse = Depends(get_current_user)
+) -> MergePopulationsResponse:
+    """Merges two separately-uploaded population datasets into a single new
+    dataset, registered in dataset_store exactly like a normal upload. This
+    is the only integration point for the two-dataset workflow: downstream
+    (parse-config, explore, run) never needs to know a merge happened.
+    """
+    try:
+        record_a = dataset_store.get(request.dataset_id_a)
+        record_b = dataset_store.get(request.dataset_id_b)
+    except DatasetNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    try:
+        merged = merge_populations(
+            record_a.dataframe, record_b.dataframe,
+            treatment_col_name=request.treatment_col_name, columns=request.columns,
+            id_column_a=request.id_column_a, id_column_b=request.id_column_b,
+            source_id_col_name=request.source_id_col_name,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    filename = request.new_filename or f"{record_a.filename}__vs__{record_b.filename}"
+    new_record = dataset_store.add(filename=filename, dataframe=merged)
+    columns = [ColumnPreviewDTO(name=c, dtype=str(merged.schema[c])) for c in merged.columns]
+    used_columns = [c for c in merged.columns if c != request.treatment_col_name]
+
+    return MergePopulationsResponse(
+        dataset_id=new_record.dataset_id, filename=new_record.filename,
+        n_rows=merged.height, n_columns=merged.width,
+        treatment_col_name=request.treatment_col_name,
+        n_from_a=record_a.dataframe.height, n_from_b=record_b.dataframe.height,
+        columns_used=used_columns, columns=columns, preview=merged.head(5).to_dicts(),
     )
 
 

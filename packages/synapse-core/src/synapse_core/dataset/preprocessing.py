@@ -88,11 +88,23 @@ class Preprocessing:
 
         Applied for every strategy except MAINTAIN, since MAINTAIN means
         the column is left exactly as-is, tokens included.
+
+        Only meaningful for string-typed columns (Utf8/Categorical): an
+        empty or 'NA'-like cell in a column the loader already inferred as
+        numeric, boolean, or temporal is never present as that literal
+        string once loaded -- Polars' CSV reader already turns it into a
+        native null at load time. Running `is_in(mdm.condition)` (a list
+        of *string* tokens) against such a column raises a dtype error
+        rather than finding anything to normalize, so those dtypes are
+        skipped here: there is nothing left for this step to do on them.
         """
         expressions = []
         for info in active_columns.values():
             mdm = info.missing_data_management
             if mdm.strategy == MissingStrategy.MAINTAIN or not mdm.condition:
+                continue
+            column_dtype = data[info.new_name].dtype
+            if column_dtype not in (pl.Utf8, pl.Categorical):
                 continue
             expressions.append(
                 pl.when(pl.col(info.new_name).is_in(mdm.condition))

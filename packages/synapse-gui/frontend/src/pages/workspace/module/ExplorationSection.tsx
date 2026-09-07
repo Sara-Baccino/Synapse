@@ -83,7 +83,7 @@ export function ExplorationSection() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-semibold text-slate-800 font-sans">Exploration (Pre-Match)</h1>
-        {populationSelection.mode === "two_datasets" && (
+        {populationSelection?.mode === "two_datasets" && (
           <span className="px-2.5 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
             2 Dataset Separati
           </span>

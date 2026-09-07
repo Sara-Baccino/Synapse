@@ -8,6 +8,7 @@ import { DemoPage } from "./pages/demo/DemoPage";
 import { ModuleSelectionPage } from "./pages/workspace/ModuleSelectionPage";
 
 import { ModuleWorkspaceLayout } from "./pages/workspace/module/ModuleWorkspaceLayout";
+import { ConfigSection } from "./pages/workspace/module/ConfigSection";
 import { DataSection } from "./pages/workspace/module/DataSection";
 import { ExplorationSection } from "./pages/workspace/module/ExplorationSection";
 import { MatchingDesignSection } from "./pages/workspace/module/MatchingDesignSection";
@@ -34,6 +35,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="data" replace /> },
       { path: "data", element: <DataSection /> },
+      { path: "config", element: <ConfigSection /> },
       { path: "exploration", element: <ExplorationSection /> },
       { path: "design", element: <MatchingDesignSection /> },
       { path: "pipeline", element: <PipelineViewSection /> },
