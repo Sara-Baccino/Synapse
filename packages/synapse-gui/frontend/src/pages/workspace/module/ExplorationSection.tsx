@@ -1,15 +1,17 @@
 /**
  * synapse-gui frontend ExplorationSection
  * -----------------------------------------
- * Connesso a POST /matching/explore.
- * Supporta sia single_dataset che due dataset distinti (two_datasets)
- * consentendo di visualizzare i grafici pre-match in entrambi i casi.
+ * Connesso a POST /matching/explore. Con la convergenza introdotta in
+ * DataSection (workingDatasetId/treatmentColumn unificati per single e
+ * two_datasets), questa sezione non ha più bisogno di sapere quante fonti
+ * ha avuto in origine il dataset: chiama sempre /matching/explore una sola
+ * volta, sullo stesso dataset che verrà usato per il run.
  */
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from "recharts";
 import { explorePopulation, type ExploreRequest, type PopulationProfile } from "../../../api/client";
-import { useWorkspace } from "../../../context/WorkspaceContext";
+import { getWorkingDataset, useWorkspace } from "../../../context/WorkspaceContext";
 
 type Tab = "distributions" | "categorical" | "missingness" | "correlations";
 
@@ -17,55 +19,29 @@ export function ExplorationSection() {
   const { populationSelection } = useWorkspace();
   const [tab, setTab] = useState<Tab>("distributions");
 
-  const isConfigured = Boolean(populationSelection);
+  const workingDataset = getWorkingDataset(populationSelection);
+  const covariates = populationSelection?.matchingCovariates ?? [];
+  const isConfigured = Boolean(workingDataset) && covariates.length > 0;
 
   const profileQuery = useQuery<PopulationProfile>({
-    queryKey: ["population-profile", populationSelection],
+    queryKey: ["population-profile", workingDataset?.datasetId, workingDataset?.treatmentColumn, covariates],
     queryFn: async () => {
-      if (!populationSelection) throw new Error("Nessun dataset selezionato.");
-
-      const covariates = populationSelection.matchingCovariates || [];
-
-      // CASE 1: Single Dataset
-      if (populationSelection.mode === "single_dataset") {
-        const requestPayload: ExploreRequest = {
-          dataset_id: populationSelection.datasetId,
-          treatment_col: populationSelection.treatmentColumn,
-          matching_covariates: covariates,
-        };
-        return await explorePopulation(requestPayload);
-      }
-
-      // CASE 2: Two Datasets (Trattati in A, Controlli in B)
-      const { datasetIdA, datasetIdB } = populationSelection;
-
-      // Tentiamo l'esplorazione separata dei due dataset per ricavare i profili
-      const [resA, resB] = await Promise.allSettled([
-        explorePopulation({ dataset_id: datasetIdA, treatment_col: "treatment", matching_covariates: covariates }),
-        explorePopulation({ dataset_id: datasetIdB, treatment_col: "treatment", matching_covariates: covariates }),
-      ]);
-
-      // Se il backend supporta la chiamata separata, uniamo i dati:
-      const profileA = resA.status === "fulfilled" ? resA.value : null;
-      const profileB = resB.status === "fulfilled" ? resB.value : null;
-
-      if (profileA || profileB) {
-        return combineProfiles(profileA, profileB, covariates);
-      }
-
-      throw new Error("Impossibile calcolare il profilo per i due dataset selezionati.");
+      if (!workingDataset) throw new Error("Nessun dataset selezionato.");
+      const requestPayload: ExploreRequest = {
+        dataset_id: workingDataset.datasetId,
+        treatment_col: workingDataset.treatmentColumn,
+        matching_covariates: covariates,
+      };
+      return await explorePopulation(requestPayload);
     },
-    enabled: Boolean(
-      isConfigured &&
-      (populationSelection?.matchingCovariates?.length ?? 0) > 0
-    ),
+    enabled: isConfigured,
     retry: false,
   });
 
   if (!isConfigured) {
     return (
       <div className="p-6 bg-amber-50 text-amber-800 rounded-lg border border-amber-200">
-        Nessun dataset configurato. Torna alla scheda <strong>Data</strong> per selezionare la popolazione.
+        Nessun dataset configurato. Torna alla scheda <strong>Data</strong> per selezionare la popolazione e almeno una covariata di matching.
       </div>
     );
   }
@@ -85,7 +61,7 @@ export function ExplorationSection() {
         <h1 className="text-2xl font-semibold text-slate-800 font-sans">Exploration (Pre-Match)</h1>
         {populationSelection?.mode === "two_datasets" && (
           <span className="px-2.5 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
-            2 Dataset Separati
+            2 popolazioni unite ({workingDataset?.treatmentColumn})
           </span>
         )}
       </div>
@@ -122,7 +98,7 @@ export function ExplorationSection() {
           {tab === "distributions" && (
             <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
               <h2 className="mb-3 text-sm font-semibold text-slate-700">Descriptive statistics</h2>
-              
+
               {(!profile.descriptive_stats || profile.descriptive_stats.length === 0) ? (
                 <p className="text-xs text-slate-400 mb-4">Nessuna statistica descrittiva disponibile.</p>
               ) : (
@@ -270,33 +246,6 @@ export function ExplorationSection() {
       )}
     </div>
   );
-}
-
-/** Utility per fondere i due profili se vengono chiamati separatamente per Dataset A e Dataset B */
-function combineProfiles(pA: PopulationProfile | null, pB: PopulationProfile | null, covariates: string[]): PopulationProfile {
-  const statsA = pA?.descriptive_stats || [];
-  const statsB = pB?.descriptive_stats || [];
-
-  const combinedStats = [
-    ...statsA.map(s => ({ ...s, group: "treated" })),
-    ...statsB.map(s => ({ ...s, group: "control" })),
-  ];
-
-  return {
-    descriptive_stats: combinedStats,
-    numeric_distributions: pA?.numeric_distributions || pB?.numeric_distributions || [],
-    categorical_frequencies: pA?.categorical_frequencies || pB?.categorical_frequencies || [],
-    missingness: covariates.map(cov => {
-      const mA = pA?.missingness?.find(m => m.variable === cov)?.treated_missing_pct ?? 0;
-      const mB = pB?.missingness?.find(m => m.variable === cov)?.control_missing_pct ?? 0;
-      return { variable: cov, treated_missing_pct: mA, control_missing_pct: mB };
-    }),
-    correlations: {
-      variables: pA?.correlations?.variables || covariates,
-      treated_matrix: pA?.correlations?.treated_matrix || [],
-      control_matrix: pB?.correlations?.control_matrix || [],
-    }
-  };
 }
 
 function CorrelationTable({ variables, matrix }: { variables: string[]; matrix: number[][] }) {

@@ -2,7 +2,7 @@
 synapse_core.utils.io
 --------------------------
 
-Generic AnalysisResult persistence: tables/datasets as parquet,
+Generic AnalysisResult persistence: tables/datasets as csv,
 artifacts via joblib, figures in their native serialized format, and a
 JSON summary + manifest describing what was written where.
 
@@ -75,8 +75,8 @@ def save_analysis_result(result: AnalysisResult, folder: str | Path) -> ResultMa
     Layout:
         folder/summary.json
         folder/manifest.json
-        folder/tables/<name>.parquet
-        folder/datasets/<name>.parquet
+        folder/tables/<name>.csv
+        folder/datasets/<name>.csv
         folder/artifacts/<name>.joblib
         folder/figures/<name>.<ext>
 
@@ -130,8 +130,8 @@ def load_analysis_result(folder: str | Path) -> AnalysisResult:
         manifest = ResultManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
         summary = json.loads(summary_path.read_text(encoding="utf-8"))
 
-        tables = {name: pl.read_parquet(base / rel) for name, rel in manifest.tables.items()}
-        datasets = {name: pl.read_parquet(base / rel) for name, rel in manifest.datasets.items()}
+        tables = {name: pl.read_csv(base / rel) for name, rel in manifest.tables.items()}
+        datasets = {name: pl.read_csv(base / rel) for name, rel in manifest.datasets.items()}
         artifacts = {name: joblib.load(base / rel) for name, rel in manifest.artifacts.items()}
         figures = {name: _load_figure(base / rel) for name, rel in manifest.figures.items()}
 
@@ -164,7 +164,7 @@ def _save_dataframes(frames: dict[str, pl.DataFrame], base: Path, subdir: str) -
     relative_paths: dict[str, str] = {}
     for name, frame in frames.items():
         relative_path = f"{subdir}/{name}.csv"
-        frame.write_parquet(base / relative_path)
+        frame.write_csv(base / relative_path)
         relative_paths[name] = relative_path
     return relative_paths
 

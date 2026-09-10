@@ -18,7 +18,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from synapse_gui.routers import auth, datasets, demo, matching
+from synapse_gui.routers import auth, datasets, demo, matching, projects
 
 __all__ = ["app", "create_app"]
 
@@ -52,6 +52,7 @@ def create_app() -> FastAPI:
     )
 
     application.include_router(auth.router)
+    application.include_router(projects.router)
     application.include_router(datasets.router)
     application.include_router(matching.router)
     application.include_router(demo.router)

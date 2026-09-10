@@ -5,6 +5,8 @@ node_modules/
 dist/
 .env
 
+idee/
+
 *.txt
 node-v22.12.0-win-x64/
 

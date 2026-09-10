@@ -7,11 +7,12 @@
  */
 
 import type {
-  CompatibilityCheckRequest, CompatibilityCheckResponse, CurrentUserResponse,
+  CompatibilityCheckRequest, CompatibilityCheckResponse, CreateProjectRequest, CurrentUserResponse,
   DatasetDetailResponse, DatasetUploadResponse, DemoMatchingRunRequest, DemoMatchingRunResponse,
   DemoToolsResponse, FromArtifactRequest, ImportConfigResponse, MatchingJobStatusResponse,
-  MatchingResultResponse, MatchingRunRequest, MatchingRunResponse, ParseConfigRequest,
-  ParseConfigResponse, TokenResponse,
+  MatchingJobSummaryDTO, MatchingResultResponse, MatchingRunRequest, MatchingRunResponse,
+  MergePopulationsRequest, MergePopulationsResponse, ParseConfigRequest,
+  ParseConfigResponse, ProjectDTO, RenameProjectRequest, TokenResponse,
 } from "../types/api";
 
 export const AUTH_TOKEN_STORAGE_KEY = "synapse_token";
@@ -69,6 +70,20 @@ export function getCurrentUser(signal?: AbortSignal): Promise<CurrentUserRespons
   return apiFetch<CurrentUserResponse>("/auth/me", { signal });
 }
 
+// ---------- projects ----------
+export function listProjects(signal?: AbortSignal): Promise<ProjectDTO[]> {
+  return apiFetch<ProjectDTO[]>("/projects", { signal });
+}
+export function createProject(request: CreateProjectRequest): Promise<ProjectDTO> {
+  return apiFetch<ProjectDTO>("/projects", { method: "POST", body: request });
+}
+export function renameProject(projectId: string, request: RenameProjectRequest): Promise<ProjectDTO> {
+  return apiFetch<ProjectDTO>(`/projects/${projectId}`, { method: "PATCH", body: request });
+}
+export function deleteProject(projectId: string): Promise<{ status: string }> {
+  return apiFetch<{ status: string }>(`/projects/${projectId}`, { method: "DELETE" });
+}
+
 // ---------- datasets ----------
 export async function uploadDataset(file: File): Promise<DatasetUploadResponse> {
   const token = getStoredToken();
@@ -106,29 +121,12 @@ export function checkCompatibility(request: CompatibilityCheckRequest): Promise<
   return apiFetch<CompatibilityCheckResponse>("/datasets/check-compatibility", { method: "POST", body: request });
 }
 
+export function mergePopulations(request: MergePopulationsRequest): Promise<MergePopulationsResponse> {
+  return apiFetch<MergePopulationsResponse>("/datasets/merge-populations", { method: "POST", body: request });
+}
+
 export function createDatasetFromArtifact(request: FromArtifactRequest): Promise<DatasetUploadResponse> {
   return apiFetch<DatasetUploadResponse>("/datasets/from-artifact", { method: "POST", body: request });
-}
-
-// ---------- structure / modules ----------
-export function runStructure(payload: { dataset_id: string; module_config: Record<string, unknown> }, signal?: AbortSignal): Promise<MatchingRunResponse> {
-  return apiFetch<MatchingRunResponse>("/modules/structure/run", { method: "POST", body: payload, signal });
-}
-
-export function getJobStatus(jobId: string, signal?: AbortSignal): Promise<MatchingJobStatusResponse> {
-  return apiFetch<MatchingJobStatusResponse>(`/jobs/${jobId}/status`, { signal });
-}
-
-export function getDistinctColumnValues(jobId: string, artifactName: string, columnName: string, signal?: AbortSignal): Promise<{ distinct_values: unknown[]; truncated: boolean }> {
-  return apiFetch<{ distinct_values: unknown[]; truncated: boolean }>(`/jobs/${jobId}/artifacts/${encodeURIComponent(artifactName)}/distinct?column=${encodeURIComponent(columnName)}`, { signal });
-}
-
-export function buildDownloadUrl(jobId: string, category: string, name: string): string {
-  return `/api/jobs/${jobId}/download?category=${category}&name=${encodeURIComponent(name)}`;
-}
-
-export function buildReportUrl(jobId: string): string {
-  return `/api/jobs/${jobId}/report`;
 }
 
 // ---------- matching ----------
@@ -140,6 +138,9 @@ export function getMatchingJobStatus(jobId: string, signal?: AbortSignal): Promi
 }
 export function getMatchingJobResult(jobId: string, signal?: AbortSignal): Promise<MatchingResultResponse> {
   return apiFetch<MatchingResultResponse>(`/matching/jobs/${jobId}/result`, { signal });
+}
+export function listMatchingJobs(signal?: AbortSignal): Promise<MatchingJobSummaryDTO[]> {
+  return apiFetch<MatchingJobSummaryDTO[]>("/matching/jobs", { signal });
 }
 export function buildMatchingDownloadUrl(jobId: string, collection: "tables" | "datasets", name: string): string {
   return `/api/matching/jobs/${jobId}/download/${collection}/${encodeURIComponent(name)}`;

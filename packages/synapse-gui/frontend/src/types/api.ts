@@ -7,6 +7,14 @@
  * types extended for the two-dataset compatibility workflow.
  */
 
+// ====================== projects.py ======================
+export interface ProjectDTO {
+  project_id: string; name: string; created_by: string; created_at: string;
+  n_datasets: number; n_jobs: number;
+}
+export interface CreateProjectRequest { name: string; }
+export interface RenameProjectRequest { name: string; }
+
 // ====================== auth.py ======================
 export interface TokenResponse { access_token: string; token_type: string; }
 export interface CurrentUserResponse { username: string; full_name: string; }
@@ -57,7 +65,22 @@ export interface ImportConfigResponse {
 }
 
 export interface CompatibilityCheckRequest { dataset_id_a: string; dataset_id_b: string; }
-export interface CompatibilityCheckResponse { is_compatible: boolean; common_columns: string[]; excluded_id_like_columns: string[]; }
+export interface DtypeMismatchDTO { column: string; dtype_a: string; dtype_b: string; }
+export interface CompatibilityCheckResponse {
+  is_compatible: boolean; common_columns: string[]; excluded_id_like_columns: string[];
+  dtype_mismatches: DtypeMismatchDTO[];
+}
+
+export interface MergePopulationsRequest {
+  dataset_id_a: string; dataset_id_b: string; treatment_col_name?: string;
+  columns?: string[] | null; id_column_a?: string | null; id_column_b?: string | null;
+  source_id_col_name?: string; new_filename?: string | null;
+}
+export interface MergePopulationsResponse {
+  dataset_id: string; filename: string; n_rows: number; n_columns: number;
+  treatment_col_name: string; n_from_a: number; n_from_b: number;
+  columns_used: string[]; columns: ColumnPreviewDTO[]; preview: Record<string, unknown>[];
+}
 
 export interface RowFilterCondition { column: string; operator: "eq" | "ne" | "in" | "not_in" | "gt" | "gte" | "lt" | "lte"; value: unknown; }
 export interface FromArtifactRequest { source_job_id: string; artifact_name: string; row_filters?: RowFilterCondition[]; new_filename?: string; }
@@ -76,7 +99,7 @@ export interface DistanceConfig {
   weight_numerical?: number; weight_categorical?: number;
 }
 export interface StrategyConfig {
-  matching_algorithm?: "greedy_nn" | "optimal_hungarian" | "optimal_transport_sinkhorn" | "full_matching";
+  matching_algorithm?: "greedy_nn" | "optimal_hungarian" | "optimal_transport_selection" | "full_matching";
   matching_ratio_k?: number; allow_replacement?: boolean; caliper_value?: number | null;
   caliper_scale?: "absolute" | "standard_deviation"; ties_handling?: "first" | "random_seeded";
   optimal_transport_target_size?: number | null;
@@ -105,6 +128,14 @@ export type MetricValue = number | string | boolean;
 export interface MatchingResultResponse {
   job_id: string; status: JobStatus; success: boolean; error: string | null;
   metrics: Record<string, MetricValue>; tables: DataFramePreviewDTO[]; datasets: DataFramePreviewDTO[]; runtime_seconds: number | null;
+  config: Record<string, unknown>;
+}
+
+export interface MatchingJobSummaryDTO {
+  job_id: string; status: JobStatus; created_at: string; dataset_id: string | null;
+  matching_algorithm: string | null; distance_metric: string | null;
+  use_propensity_score: boolean | null; matching_direction: string | null;
+  metrics: Record<string, MetricValue>; error: string | null;
 }
 
 // ====================== demo.py ======================

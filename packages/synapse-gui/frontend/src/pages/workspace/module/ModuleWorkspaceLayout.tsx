@@ -21,8 +21,8 @@ export function ModuleWorkspaceLayout() {
     { label: "Data", path: "data", enabled: true },
     { label: "Exploration", path: "exploration", enabled: isDataConfigured },
     { label: "Design", path: "design", enabled: isDataConfigured },
-    { label: "Pipeline", path: "pipeline", enabled: isDataConfigured },
     { label: "Results", path: "results", enabled: isDataConfigured && isRunExecuted },
+    { label: "Compare", path: "compare", enabled: isDataConfigured && isRunExecuted },
     { label: "Export", path: "export", enabled: isDataConfigured && isRunExecuted },
   ];
 

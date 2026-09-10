@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "react-router-dom";
 
 import { AuthProvider } from "./context/AuthContext";
+import { ProjectProvider } from "./context/ProjectContext";
 import { WorkspaceProvider } from "./context/WorkspaceContext";
 import { router } from "./router";
 
@@ -17,9 +18,11 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <WorkspaceProvider>
-          <RouterProvider router={router} />
-        </WorkspaceProvider>
+        <ProjectProvider>
+          <WorkspaceProvider>
+            <RouterProvider router={router} />
+          </WorkspaceProvider>
+        </ProjectProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

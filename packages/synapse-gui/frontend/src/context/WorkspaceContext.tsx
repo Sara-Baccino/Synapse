@@ -2,16 +2,14 @@
  * synapse-gui frontend WorkspaceContext
  * -------------------------------------------
  *
- * Holds three independent concerns:
+ * Holds two independent concerns:
  *  1. Dataset Cart -- every dataset uploaded/promoted in this session,
  *     recycled from SynClair.
  *  2. PopulationSelection -- how the two populations to compare are
  *     currently defined: either one dataset split by a treatment/group
  *     column, or two separate datasets. A single discriminated union,
  *     not two parallel disconnected states, per the Phase A decision.
- *  3. Matching Design Config -- shared configuration state for the
- *     matching strategy (direction, distance metrics, algorithm, etc.).
- *  4. Run history (runs[] + currentRunId) -- every matching run
+ *  3. Run history (runs[] + currentRunId) -- every matching run
  *     executed in this session is appended, never overwritten, so
  *     Compare Runs can look back at any of them. Session-only (no
  *     server-side persistence), matching the rest of this Context.
@@ -38,6 +36,7 @@ export type PopulationSelection =
   | {
       mode: "single_dataset";
       datasetId: string;
+      workingDatasetId: string;
       treatmentColumn: string;
       idColumn: string | null;
       matchingCovariates: string[];
@@ -46,16 +45,32 @@ export type PopulationSelection =
       mode: "two_datasets";
       datasetIdA: string;
       datasetIdB: string;
+      workingDatasetId: string | null;
+      treatmentColumn: string;
       idColumn: string | null;
       matchingCovariates: string[];
     };
 
+// Everything downstream of the Dataset page (Explore, Matching Design, Run)
+// reads workingDatasetId/treatmentColumn only -- it never needs to know
+// whether the working dataset came from a single upload or from merging
+// two populations. For "single_dataset", workingDatasetId is always equal
+// to datasetId (set at selection time); for "two_datasets", it stays null
+// until POST /datasets/merge-populations succeeds, and this getter is what
+// isPopulationSelectionValid uses to require that step actually happened.
+export function getWorkingDataset(
+  selection: PopulationSelection | null
+): { datasetId: string; treatmentColumn: string } | null {
+  if (!selection || !selection.workingDatasetId) return null;
+  return { datasetId: selection.workingDatasetId, treatmentColumn: selection.treatmentColumn };
+}
+
 export function isPopulationSelectionValid(selection: PopulationSelection | null): boolean {
   if (!selection) return false;
-  if (selection.mode === "single_dataset") {
-    return Boolean(selection.datasetId && selection.treatmentColumn && selection.matchingCovariates.length > 0);
-  }
-  return Boolean(selection.datasetIdA && selection.datasetIdB && selection.matchingCovariates.length > 0);
+  if (!selection.workingDatasetId || !selection.treatmentColumn) return false;
+  if (selection.matchingCovariates.length === 0) return false;
+  if (selection.mode === "single_dataset") return Boolean(selection.datasetId);
+  return Boolean(selection.datasetIdA && selection.datasetIdB);
 }
 
 export interface RunEntry {
@@ -67,37 +82,13 @@ export interface RunEntry {
   populationSelectionSnapshot: PopulationSelection;
 }
 
-export type BalanceMetricType = "smd" | "variance_ratio" | "ks_test" | "chi_square" | "jensen_shannon";
-
-export interface MatchingDesignState {
-  matchingDirection: "treated_to_control" | "control_to_treated";
-  usePropensityScore: boolean;
-  matchingSpace: "covariates_only" | "ps_only" | "logit_ps_only" | "hybrid_covariates_and_ps";
-  distanceMetric: "euclidean" | "mahalanobis" | "gower" | "weighted_hybrid";
-  matchingAlgorithm: "greedy_nn" | "optimal_hungarian";
-  allowReplacement: boolean;
-  caliperValue: string;
-  balanceMetrics: BalanceMetricType[];
-}
-
-const DEFAULT_MATCHING_DESIGN: MatchingDesignState = {
-  matchingDirection: "treated_to_control",
-  usePropensityScore: true,
-  matchingSpace: "covariates_only",
-  distanceMetric: "euclidean",
-  matchingAlgorithm: "greedy_nn",
-  allowReplacement: false,
-  caliperValue: "",
-  balanceMetrics: ["smd"],
-};
-
 interface WorkspaceContextValue {
   cart: CartDatasetEntry[];
   dataConfigs: Record<string, DataConfigDTO>;
-  dataConfigByDatasetId: Record<string, DataConfigDTO>;
   selectedModuleId: string | null;
-  matchingDesign: MatchingDesignState;
+
   populationSelection: PopulationSelection | null;
+  moduleConfig: Record<string, unknown> | null;
 
   runs: RunEntry[];
   currentRunId: string | null;
@@ -105,11 +96,10 @@ interface WorkspaceContextValue {
   addToCart: (entry: Omit<CartDatasetEntry, "addedAt">) => void;
   removeFromCart: (datasetId: string) => void;
   setDataConfigFor: (datasetId: string, dataConfig: DataConfigDTO) => void;
-  setDataConfigForDataset: (datasetId: string, config: DataConfigDTO) => void;
   setSelectedModule: (moduleId: string) => void;
 
   setPopulationSelection: (selection: PopulationSelection) => void;
-  setMatchingDesign: (patch: Partial<MatchingDesignState>) => void;
+  setModuleConfig: (config: Record<string, unknown>) => void;
 
   addRun: (run: Omit<RunEntry, "id" | "createdAt">) => void;
   setCurrentRun: (runId: string) => void;
@@ -128,16 +118,12 @@ function generateLocalId(): string {
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [cart, setCart] = useState<CartDatasetEntry[]>([]);
-  const [dataConfigByDatasetId, setDataConfigByDatasetId] = useState<Record<string, DataConfigDTO>>({});
+  const [dataConfigs, setDataConfigs] = useState<Record<string, DataConfigDTO>>({});
   const [selectedModuleId, setSelectedModuleIdState] = useState<string | null>(null);
   const [populationSelection, setPopulationSelectionState] = useState<PopulationSelection | null>(null);
+  const [moduleConfig, setModuleConfigState] = useState<Record<string, unknown> | null>(null);
   const [runs, setRuns] = useState<RunEntry[]>([]);
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
-  const [matchingDesign, setMatchingDesignState] = useState<MatchingDesignState>(DEFAULT_MATCHING_DESIGN);
-
-  function setMatchingDesign(patch: Partial<MatchingDesignState>): void {
-    setMatchingDesignState((prev) => ({ ...prev, ...patch }));
-  }
 
   function addToCart(entry: Omit<CartDatasetEntry, "addedAt">): void {
     setCart((prev) => [...prev.filter((e) => e.datasetId !== entry.datasetId), { ...entry, addedAt: Date.now() }]);
@@ -145,20 +131,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   function removeFromCart(datasetId: string): void {
     setCart((prev) => prev.filter((e) => e.datasetId !== datasetId));
-    setDataConfigByDatasetId((prev) => {
+    setDataConfigs((prev) => {
       const next = { ...prev };
       delete next[datasetId];
       return next;
     });
   }
 
-  function setDataConfigForDataset(datasetId: string, config: DataConfigDTO): void {
-    setDataConfigByDatasetId((prev) => ({ ...prev, [datasetId]: config }));
-  }
-
-  // Wrapper di compatibilità per il vecchio metodo setDataConfigFor
   function setDataConfigFor(datasetId: string, dataConfig: DataConfigDTO): void {
-    setDataConfigForDataset(datasetId, dataConfig);
+    setDataConfigs((prev) => ({ ...prev, [datasetId]: dataConfig }));
   }
 
   function setSelectedModule(moduleId: string): void {
@@ -167,6 +148,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   function setPopulationSelection(selection: PopulationSelection): void {
     setPopulationSelectionState(selection);
+    // Changing which dataset(s)/populations are in play invalidates any
+    // matching design chosen for the previous selection (covariate lists,
+    // in particular, would silently reference columns that may not even
+    // exist in the new selection).
+    setModuleConfigState(null);
+  }
+
+  function setModuleConfig(config: Record<string, unknown>): void {
+    setModuleConfigState(config);
   }
 
   function addRun(run: Omit<RunEntry, "id" | "createdAt">): void {
@@ -185,36 +175,20 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   function reset(): void {
     setCart([]);
-    setDataConfigByDatasetId({});
+    setDataConfigs({});
     setSelectedModuleIdState(null);
     setPopulationSelectionState(null);
+    setModuleConfigState(null);
     setRuns([]);
     setCurrentRunId(null);
-    setMatchingDesignState(DEFAULT_MATCHING_DESIGN);
   }
 
   return (
     <WorkspaceContext.Provider
       value={{
-        cart,
-        dataConfigs: dataConfigByDatasetId, // Mantenuto per compatibilità
-        dataConfigByDatasetId,
-        selectedModuleId,
-        matchingDesign,
-        populationSelection,
-        runs,
-        currentRunId,
-        addToCart,
-        removeFromCart,
-        setDataConfigFor,
-        setDataConfigForDataset,
-        setSelectedModule,
-        setPopulationSelection,
-        setMatchingDesign,
-        addRun,
-        setCurrentRun,
-        renameRun,
-        reset,
+        cart, dataConfigs, selectedModuleId, populationSelection, moduleConfig, runs, currentRunId,
+        addToCart, removeFromCart, setDataConfigFor, setSelectedModule,
+        setPopulationSelection, setModuleConfig, addRun, setCurrentRun, renameRun, reset,
       }}
     >
       {children}

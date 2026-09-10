@@ -94,29 +94,101 @@ class ReportManager:
     @staticmethod
     def _build_header(result: AnalysisResult, title: str, styles) -> list:
         metadata = result.metadata
-        elements = [Paragraph(title, styles["Title"]), Spacer(1, 0.3 * cm)]
+        elements = []
 
-        info_lines = [
-            f"<b>Module:</b> {metadata.module_name}"
-            + (f" (v{metadata.module_version})" if metadata.module_version else ""),
+        # 1. Definizione Titolo Principale secondo il nuovo formato
+        # Priorità: titolo passato esplicitamente > custom_title da report_options > formato default "Synapse - <Modulo> Analysis Report"
+        custom_title = result.report_options.get("custom_title")
+        if title and title != f"{metadata.module_name} Report":
+            report_title = title
+        elif custom_title:
+            report_title = custom_title
+        else:
+            formatted_module_name = metadata.module_name.replace("_", " ").title()
+            report_title = f"Synapse - {formatted_module_name} Analysis Report"
+
+        # Stile Titolo Principale
+        title_style = ParagraphStyle("HeaderTitle",
+            parent=styles["Title"], fontName="Helvetica-Bold", fontSize=18, leading=22,
+            textColor=colors.HexColor("#1A2B4C"), # Blu scuro
+            alignment=0, # Allineamento a sinistra
+            spaceAfter=12,
+        )
+        elements.append(Paragraph(report_title, title_style))
+
+        # 2. Tabella Metadati Intestazione (Disposta su 2 colonne a tutta larghezza)
+        created_at_str = metadata.created_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+        
+        meta_left = [
+            f"<b>Module:</b> {metadata.module_name}" + (f" (v{metadata.module_version})" if metadata.module_version else ""),
             f"<b>Dataset:</b> {metadata.dataset_name or 'N/A'}",
-            f"<b>Created at:</b> {metadata.created_at.isoformat()}",
+        ]
+        meta_right = [
+            f"<b>Created at:</b> {created_at_str}",
         ]
         if result.runtime_seconds is not None:
-            info_lines.append(f"<b>Runtime:</b> {result.runtime_seconds:.2f}s")
+            meta_right.append(f"<b>Runtime:</b> {result.runtime_seconds:.2f}s")
+
+        meta_text_left = "<br/>".join(meta_left)
+        meta_text_right = "<br/>".join(meta_right)
+
+        meta_style = ParagraphStyle("HeaderMeta",
+            parent=styles["Normal"], fontName="Helvetica", fontSize=9, leading=13,
+            textColor=colors.HexColor("#4A5568"),
+        )
+
+        meta_table_data = [[
+            Paragraph(meta_text_left, meta_style),
+            Paragraph(meta_text_right, meta_style)
+        ]]
+
+        # Larghezza di 17.5 cm (corrispondente alla larghezza stampabile di un A4 con 1.75 cm di margini)
+        meta_table = Table(meta_table_data, colWidths=[9.0 * cm, 8.5 * cm], hAlign="LEFT")
+        meta_table.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        
+        elements.append(meta_table)
+        elements.append(Spacer(1, 0.2 * cm))
+
+        # 3. Descrizione Opzionale
         if metadata.description:
-            info_lines.append(f"<b>Description:</b> {metadata.description}")
-
-        for line in info_lines:
-            elements.append(Paragraph(line, styles["Normal"]))
-        elements.append(Spacer(1, 0.4 * cm))
-
-        if not result.success:
-            error_style = ParagraphStyle(
-                "Error", parent=styles["Normal"], textColor=colors.red, fontName="Helvetica-Bold"
+            desc_style = ParagraphStyle("HeaderDescription",
+                parent=styles["Normal"], fontName="Helvetica-Oblique", fontSize=9,
+                textColor=colors.HexColor("#2D3748"),
+                spaceBefore=4,
             )
-            elements.append(Paragraph(f"RUN FAILED: {result.error}", error_style))
-            elements.append(Spacer(1, 0.4 * cm))
+            elements.append(Paragraph(f"<b>Description:</b> {metadata.description}", desc_style))
+            elements.append(Spacer(1, 0.2 * cm))
+
+        # 4. Banner di Errore (se la run è fallita)
+        if not result.success:
+            error_style = ParagraphStyle("HeaderError",
+                parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=10,
+                textColor=colors.HexColor("#C53030"),
+                backColor=colors.HexColor("#FFF5F5"),
+                borderColor=colors.HexColor("#FEB2B2"),
+                borderWidth=1,
+                borderPadding=6,
+                spaceBefore=6,
+                spaceAfter=6,
+            )
+            elements.append(Paragraph(f"<b>RUN FAILED:</b> {result.error}", error_style))
+
+        # Linea separatrice orizzontale in fondo all'header
+        elements.append(Spacer(1, 0.2 * cm))
+        divider = Table([[""]], colWidths=[17.5 * cm])
+        divider.setStyle(TableStyle([
+            ("LINEABOVE", (0, 0), (-1, -1), 1, colors.HexColor("#E2E8F0")),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        elements.append(divider)
+        elements.append(Spacer(1, 0.4 * cm))
 
         return elements
 
@@ -148,22 +220,27 @@ class ReportManager:
         if not result.figures:
             return []
 
-        elements = [Paragraph("Figures", styles["Heading2"])]
+        elements = [Paragraph("Figures & Charts", styles["Heading2"])]
+
+        # Esempio per raggruppare figure consecutive in righe affiancate
+        fig_flowables = []
         for name, figure in result.figures.items():
-            elements.append(Paragraph(figure.caption or name, styles["Heading3"]))
-            flowable = ReportManager._figure_to_flowable(figure)
-            if flowable is not None:
-                elements.append(flowable)
-            else:
-                elements.append(
-                    Paragraph(
-                        f"This figure ('{figure.format.value}') is interactive and cannot be embedded "
-                        "in a static PDF. The full interactive figure is available among the exported "
-                        "artifacts (figures/ folder).",
-                        styles["Normal"],
-                    )
-                )
-            elements.append(Spacer(1, 0.3 * cm))
+            flowable = ReportManager._figure_to_flowable(figure) # Ritorna Image o SvgRenderer
+            
+            # Titolo o Didascalia della figura
+            caption_text = f"<b>{name}</b>: {figure.caption}" if figure.caption else name
+            caption = Paragraph(caption_text, styles["CaptionStyle"])
+            
+            if flowable:
+                fig_flowables.append([flowable, caption])
+
+        # Inserisci nella storia alternando immagini e didascalie con Spacers
+        for img, cap in fig_flowables:
+            elements.append(cap)
+            elements.append(Spacer(1, 0.1 * cm))
+            elements.append(img)
+            elements.append(Spacer(1, 0.4 * cm))
+
         return elements
 
     @staticmethod
@@ -217,19 +294,24 @@ class ReportManager:
         return flowables
 
     @staticmethod
-    def _styled_table(rows: list[list[str]]) -> Table:
-        table = Table(rows, hAlign="LEFT", repeatRows=1)
+    def _styled_table(rows: list[list[str]], col_widths: list[float] | None = None) -> Table:
+        # Se non specificato, divide equamente i 17.5 cm utili della pagina A4
+        if col_widths is None and rows:
+            num_cols = len(rows[0])
+            col_widths = [17.5 * cm / num_cols] * num_cols
+
+        table = Table(rows, colWidths=col_widths, hAlign="LEFT", repeatRows=1)
         table.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("FONTSIZE", (0, 0), (-1, -1), 8),
-                    ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f4f4f4")]),
-                ]
-            )
+            TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#A6A8AD")), # Blu istituzionale
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E0E0E0")),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8F9FA")]),
+            ])
         )
         return table
 

@@ -131,6 +131,12 @@ class AnalysisResult(BaseModel):
         "never has to import a concrete ModuleConfig.",
     )
 
+    # NOVO CAMPO: Opzioni specifiche per il Report Generator (layout, titoli, layout griglie)
+    report_options: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Optional formatting hints for ReportManager (e.g. custom_title, layout, section_mapping).",
+    )
+
     success: bool = Field(default=True, description="Whether the module run completed without error.")
     error: str | None = Field(default=None, description="Error message, if success is False.")
 
@@ -155,6 +161,10 @@ class AnalysisResult(BaseModel):
     def log(self, message: str, level: LogLevel = LogLevel.INFO) -> None:
         self.logs.append(LogEntry(level=level, message=message))
 
+    def set_report_options(self, **options: Any) -> None:
+        """Helper to set formatting hints for synapse-reporting."""
+        self.report_options.update(options)
+
     def mark_failed(self, error: str) -> None:
         self.success = False
         self.error = error
@@ -176,6 +186,7 @@ class AnalysisResult(BaseModel):
             "logs": [entry.model_dump(mode="json") for entry in self.logs],
             "runtime_seconds": self.runtime_seconds,
             "runtime_breakdown": self.runtime_breakdown,
+            "report_options": self.report_options,
             "success": self.success,
             "error": self.error,
         }
