@@ -16,7 +16,7 @@
  */
 
 import { createContext, useContext, useState, type ReactNode } from "react";
-import type { DataConfigDTO } from "../types/api";
+import type { ColumnStatsDTO, DataConfigDTO } from "../types/api";
 
 export interface CartDatasetOrigin {
   kind: "upload" | "artifact";
@@ -85,6 +85,7 @@ export interface RunEntry {
 interface WorkspaceContextValue {
   cart: CartDatasetEntry[];
   dataConfigs: Record<string, DataConfigDTO>;
+  columnStats: Record<string, ColumnStatsDTO[]>;
   selectedModuleId: string | null;
 
   populationSelection: PopulationSelection | null;
@@ -96,6 +97,7 @@ interface WorkspaceContextValue {
   addToCart: (entry: Omit<CartDatasetEntry, "addedAt">) => void;
   removeFromCart: (datasetId: string) => void;
   setDataConfigFor: (datasetId: string, dataConfig: DataConfigDTO) => void;
+  setColumnStatsFor: (datasetId: string, stats: ColumnStatsDTO[]) => void;
   setSelectedModule: (moduleId: string) => void;
 
   setPopulationSelection: (selection: PopulationSelection) => void;
@@ -119,6 +121,7 @@ function generateLocalId(): string {
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [cart, setCart] = useState<CartDatasetEntry[]>([]);
   const [dataConfigs, setDataConfigs] = useState<Record<string, DataConfigDTO>>({});
+  const [columnStats, setColumnStats] = useState<Record<string, ColumnStatsDTO[]>>({});
   const [selectedModuleId, setSelectedModuleIdState] = useState<string | null>(null);
   const [populationSelection, setPopulationSelectionState] = useState<PopulationSelection | null>(null);
   const [moduleConfig, setModuleConfigState] = useState<Record<string, unknown> | null>(null);
@@ -136,10 +139,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       delete next[datasetId];
       return next;
     });
+    setColumnStats((prev) => {
+      const next = { ...prev };
+      delete next[datasetId];
+      return next;
+    });
   }
 
   function setDataConfigFor(datasetId: string, dataConfig: DataConfigDTO): void {
     setDataConfigs((prev) => ({ ...prev, [datasetId]: dataConfig }));
+  }
+
+  function setColumnStatsFor(datasetId: string, stats: ColumnStatsDTO[]): void {
+    setColumnStats((prev) => ({ ...prev, [datasetId]: stats }));
   }
 
   function setSelectedModule(moduleId: string): void {
@@ -176,6 +188,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   function reset(): void {
     setCart([]);
     setDataConfigs({});
+    setColumnStats({});
     setSelectedModuleIdState(null);
     setPopulationSelectionState(null);
     setModuleConfigState(null);
@@ -186,8 +199,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   return (
     <WorkspaceContext.Provider
       value={{
-        cart, dataConfigs, selectedModuleId, populationSelection, moduleConfig, runs, currentRunId,
-        addToCart, removeFromCart, setDataConfigFor, setSelectedModule,
+        cart, dataConfigs, columnStats, selectedModuleId, populationSelection, moduleConfig, runs, currentRunId,
+        addToCart, removeFromCart, setDataConfigFor, setColumnStatsFor, setSelectedModule,
         setPopulationSelection, setModuleConfig, addRun, setCurrentRun, renameRun, reset,
       }}
     >

@@ -14,6 +14,7 @@ from synapse_matching.algorithms.optimal_assignment import OptimalAssignmentConf
 from synapse_matching.algorithms.optimal_transport_assignment import OptimalTransportAssignment, OptimalTransportConfig
 from synapse_matching.capability.registry import check_config_capabilities
 from synapse_matching.config.matching_module_config import MatchingModuleConfig
+from synapse_matching.constraints.caliper_window import CaliperWindowFilter
 from synapse_matching.constraints.exact_matching import ExactMatchingConstraint
 from synapse_matching.diagnostics.overlap import OverlapDiagnostic
 from synapse_matching.diagnostics.pair_diagnostics import PairDiagnostics
@@ -34,7 +35,7 @@ __all__ = ["MatchingModule"]
 _STRATEGY_REGISTRY = {
     "greedy_nn": GreedyNearestNeighborMatching,
     "optimal_hungarian": OptimalAssignmentMatching,
-    "optimal_transport_sinkhorn": OptimalTransportAssignment,
+    "optimal_transport_selection": OptimalTransportAssignment,
 }
 
 _DISTANCE_REGISTRY = {
@@ -56,7 +57,7 @@ class MatchingModule(AnalysisModule[MatchingModuleConfig]):
                 replacement=cfg.strategy.allow_replacement,
                 ratio_k=cfg.strategy.matching_ratio_k,
             )
-        if cfg.strategy.matching_algorithm == "optimal_transport_sinkhorn":
+        if cfg.strategy.matching_algorithm == "optimal_transport_selection":
             return OptimalTransportConfig(target_size=cfg.strategy.optimal_transport_target_size)
         return OptimalAssignmentConfig(caliper=cfg.strategy.caliper_value)
 
@@ -88,11 +89,8 @@ class MatchingModule(AnalysisModule[MatchingModuleConfig]):
             constraint_result = constraint.apply(df, cfg.population.treatment_col)
             result.config.setdefault("strata", constraint_result.metadata)
 
-            all_query_idx_global: list[int] = []
             all_pool_idx_global: list[int] = []
             all_distances: list[float] = []
-            all_pair_ids: list[int] = []
-            all_weights: list[float] = []
             n_query_total = 0
             pair_id_offset = 0
 
@@ -144,7 +142,9 @@ class MatchingModule(AnalysisModule[MatchingModuleConfig]):
                 query_X = working_query.select(feature_columns).to_numpy()
                 pool_X = working_pool.select(feature_columns).to_numpy()
 
-                # 1. Calcolo matrice distanze (se metrica non euclidea)
+                # 1. Calcolo matrice distanze (se metrica non euclidea, o
+                #    se serve comunque una matrice esplicita per applicare
+                #    i vincoli caliper per-covariata qui sotto)
                 distance_matrix = None
                 if cfg.distance.distance_metric != "euclidean":
                     categorical_covariates = set(self._data_config.categorical_columns()) & set(feature_columns)
@@ -160,6 +160,23 @@ class MatchingModule(AnalysisModule[MatchingModuleConfig]):
                     else:
                         distance_cls = _DISTANCE_REGISTRY[cfg.distance.distance_metric]
                         distance_matrix = distance_cls().compute(query_X, pool_X, feature_columns, column_types)
+                elif cfg.constraints.caliper_windows:
+                    # Euclidean is normally computed internally by the
+                    # algorithm's own fit(), which would bypass the
+                    # per-covariate caliper masking below -- compute it
+                    # explicitly here instead, same as candidate_prefilter
+                    # already does for its own cost matrix.
+                    distance_matrix = cdist(query_X, pool_X, metric="euclidean")
+
+                # 1b. Vincoli hard per-covariata (finestra di tolleranza,
+                #     non stratificazione): esclude pairwise le coppie che
+                #     violano il caliper su una qualunque covariata
+                #     configurata, indipendentemente dalla metrica scelta.
+                if cfg.constraints.caliper_windows and distance_matrix is not None:
+                    distance_matrix = CaliperWindowFilter().apply_to_distance_matrix(
+                        distance_matrix, working_query, working_pool,
+                        cfg.constraints.caliper_windows, set(self._data_config.categorical_columns()),
+                    )
 
                 # 2. Applicazione Pre-Filtro opzionale
                 if cfg.strategy.apply_candidate_prefilter:
@@ -168,14 +185,12 @@ class MatchingModule(AnalysisModule[MatchingModuleConfig]):
                         min_candidates=cfg.strategy.prefilter_min_candidates or cfg.strategy.optimal_transport_target_size,
                     )
                     prefilter_cost = (
-                        distance_matrix
-                        if cfg.distance.distance_metric != "euclidean"
-                        else cdist(query_X, pool_X, metric="euclidean")
+                        distance_matrix if distance_matrix is not None else cdist(query_X, pool_X, metric="euclidean")
                     )
                     candidate_indices = KNearestNeighborCandidatePreFilter().apply(prefilter_cost, prefilter_config)
                     pool_X = pool_X[candidate_indices]
                     working_pool = working_pool[candidate_indices.tolist()]
-                    if cfg.distance.distance_metric != "euclidean":
+                    if distance_matrix is not None:
                         distance_matrix = distance_matrix[:, candidate_indices]
 
                 # 3. Esecuzione algoritmo di matching
@@ -183,7 +198,7 @@ class MatchingModule(AnalysisModule[MatchingModuleConfig]):
                 algorithm = algorithm_cls()
                 strategy_config = self._build_strategy_config(cfg)
 
-                if cfg.distance.distance_metric == "euclidean":
+                if cfg.distance.distance_metric == "euclidean" and distance_matrix is None:
                     algorithm.fit(query_X, pool_X, strategy_config)
                 else:
                     algorithm.fit_with_distance_matrix(distance_matrix, strategy_config)
@@ -193,12 +208,20 @@ class MatchingModule(AnalysisModule[MatchingModuleConfig]):
                 is_population_selection = match_output.strategy_metadata.get("output_type") == "population_selection"
 
                 if is_population_selection:
+                    # Population-level selection (e.g. optimal_transport_selection):
+                    # no pairwise correspondence exists, so pair_id is
+                    # explicitly null and __role__ is "selected" rather than
+                    # a query/pool role -- this is what makes the distinction
+                    # from pairwise matching visible downstream (result
+                    # tables, balance diagnostics, UI), instead of silently
+                    # dropping the selection as if nothing had matched.
                     selected_pool = working_pool[match_output.matched_indices["pool"].tolist()]
                     selected_pool = selected_pool.with_columns(
                         pl.lit(None, dtype=pl.Int64).alias("pair_id"),
                         pl.Series("weights", match_output.weights),
                         pl.lit("selected").alias("__role__"),
                     )
+                    matched_frames.append(selected_pool)
 
                 elif match_output.pair_id.size > 0:
                     matched_query = working_query[match_output.matched_indices["query"].tolist()]

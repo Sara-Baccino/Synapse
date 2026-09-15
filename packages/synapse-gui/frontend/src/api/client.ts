@@ -7,7 +7,8 @@
  */
 
 import type {
-  CompatibilityCheckRequest, CompatibilityCheckResponse, CreateProjectRequest, CurrentUserResponse,
+  CompatibilityCheckRequest, CompatibilityCheckResponse, ConfigCompatibilityRequest, ConfigCompatibilityResponse,
+  CreateProjectRequest, CurrentUserResponse,
   DatasetDetailResponse, DatasetUploadResponse, DemoMatchingRunRequest, DemoMatchingRunResponse,
   DemoToolsResponse, FromArtifactRequest, ImportConfigResponse, MatchingJobStatusResponse,
   MatchingJobSummaryDTO, MatchingResultResponse, MatchingRunRequest, MatchingRunResponse,
@@ -119,6 +120,10 @@ export async function importConfigFile(datasetId: string, file: File): Promise<I
 
 export function checkCompatibility(request: CompatibilityCheckRequest): Promise<CompatibilityCheckResponse> {
   return apiFetch<CompatibilityCheckResponse>("/datasets/check-compatibility", { method: "POST", body: request });
+}
+
+export function checkConfigCompatibility(request: ConfigCompatibilityRequest): Promise<ConfigCompatibilityResponse> {
+  return apiFetch<ConfigCompatibilityResponse>("/datasets/check-config-compatibility", { method: "POST", body: request });
 }
 
 export function mergePopulations(request: MergePopulationsRequest): Promise<MergePopulationsResponse> {

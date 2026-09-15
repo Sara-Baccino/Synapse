@@ -5,9 +5,18 @@
  * The MatchingModuleConfig sub-configs as internal tabs. State lives here
  * as the editable draft; "Run Analysis" is what actually builds the full
  * MatchingModuleConfig, writes it to WorkspaceContext (setModuleConfig,
- * for provenance/Compare Runs) and calls POST /matching/run. There is no
- * separate Pipeline step: this is the run button the whole workflow was
- * missing.
+ * for provenance/Compare Runs) and calls POST /matching/run.
+ *
+ * Covariates tab: a real, editable table (matching / diagnostic /
+ * outcome / none per column) replaces the previous static, uneditable
+ * list carried over from Data Loading. Candidate columns come from the
+ * working dataset's own DataConfig (WorkspaceContext.dataConfigs),
+ * not from the DataSection-derived default anymore -- that default is
+ * only used to seed the initial "matching" selection. One-hot-encoded
+ * categorical columns are expanded to their actual post-preprocessing
+ * names (expandColumnToCovariateNames) for every role, not just
+ * matching -- the same fix that resolved the "unable to find column"
+ * crash applies equally to diagnostic/outcome covariates.
  */
 
 import { useState } from "react";
@@ -16,8 +25,11 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { runMatching } from "../../../api/client";
 import { getWorkingDataset, useWorkspace } from "../../../context/WorkspaceContext";
+import type { ColumnInfoDTO } from "../../../types/api";
+import { expandColumnToCovariateNames } from "../../../utils/covariateExpansion";
 
 type Tab = "population" | "covariates" | "representation" | "constraints" | "distance_strategy" | "diagnostics";
+type CovariateRole = "matching" | "diagnostic" | "outcome" | "none";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "population", label: "Population" },
@@ -28,14 +40,33 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "diagnostics", label: "Diagnostics" },
 ];
 
+function initialRole(column: ColumnInfoDTO, defaultMatchingCovariates: string[]): CovariateRole {
+  const isDefaultMatching = defaultMatchingCovariates.some(
+    (name) => name === column.name || name.startsWith(`${column.name}__`)
+  );
+  return isDefaultMatching ? "matching" : "none";
+}
+
 export function MatchingDesignSection() {
   const navigate = useNavigate();
   const { moduleId } = useParams<{ moduleId: string }>();
-  const { populationSelection, setModuleConfig, addRun, runs } = useWorkspace();
+  const { populationSelection, dataConfigs, columnStats, setModuleConfig, addRun, runs } = useWorkspace();
   const workingDataset = getWorkingDataset(populationSelection);
-  const matchingCovariates = populationSelection?.matchingCovariates ?? [];
+
+  const candidateColumns: ColumnInfoDTO[] = workingDataset
+    ? (dataConfigs[workingDataset.datasetId]?.columns ?? []).filter(
+        (c) => c.active && !c.id && c.name !== workingDataset.treatmentColumn
+      )
+    : [];
+  const stats = workingDataset ? columnStats[workingDataset.datasetId] ?? [] : [];
 
   const [tab, setTab] = useState<Tab>("population");
+
+  const [covariateRoles, setCovariateRoles] = useState<Record<string, CovariateRole>>(() => {
+    const roles: Record<string, CovariateRole> = {};
+    for (const c of candidateColumns) roles[c.name] = initialRole(c, populationSelection?.matchingCovariates ?? []);
+    return roles;
+  });
 
   const [matchingDirection, setMatchingDirection] = useState<"treated_to_control" | "control_to_treated">("treated_to_control");
   const [usePropensityScore, setUsePropensityScore] = useState(true);
@@ -50,14 +81,24 @@ export function MatchingDesignSection() {
 
   const [runError, setRunError] = useState<string | null>(null);
 
-  // Dynamic UI: some params are only meaningful for certain algorithms.
   const isHungarian = matchingAlgorithm === "optimal_hungarian";
   const caliperIsInvalid = caliperValue.trim() !== "" && Number.isNaN(Number(caliperValue));
 
+  const matchingColumnNames = candidateColumns.filter((c) => covariateRoles[c.name] === "matching").map((c) => c.name);
+
   function buildModuleConfig(): Record<string, unknown> {
+    const grouped: Record<CovariateRole, string[]> = { matching: [], diagnostic: [], outcome: [], none: [] };
+    for (const column of candidateColumns) {
+      const role = covariateRoles[column.name] ?? "none";
+      grouped[role].push(...expandColumnToCovariateNames(column, stats));
+    }
     return {
       population: { treatment_col: workingDataset!.treatmentColumn, matching_direction: matchingDirection },
-      covariates: { matching_covariates: matchingCovariates },
+      covariates: {
+        matching_covariates: grouped.matching,
+        evaluation_covariates: grouped.diagnostic,
+        outcome_covariates: grouped.outcome,
+      },
       representation: { use_propensity_score: usePropensityScore, matching_space: matchingSpace },
       constraints: {
         exact_match_covariates: Array.from(exactMatchCovariates),
@@ -95,10 +136,10 @@ export function MatchingDesignSection() {
     },
   });
 
-  if (!workingDataset || matchingCovariates.length === 0) {
+  if (!workingDataset || candidateColumns.length === 0) {
     return (
       <div className="p-6 bg-amber-50 text-amber-800 rounded-lg border border-amber-200">
-        Nessun dataset configurato. Torna alla scheda <strong>Data</strong> per selezionare la popolazione e almeno una covariata di matching.
+        Nessun dataset configurato. Torna alla scheda <strong>Data</strong> per selezionare la popolazione.
       </div>
     );
   }
@@ -132,12 +173,49 @@ export function MatchingDesignSection() {
 
         {tab === "covariates" && (
           <div>
-            <p className="mb-2 text-sm text-slate-500">Le covariate di matching si scelgono nella scheda Data. Selezionate:</p>
-            <div className="flex flex-wrap gap-2">
-              {matchingCovariates.map((c) => (
-                <span key={c} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-mono text-slate-700">{c}</span>
-              ))}
-            </div>
+            <p className="mb-3 text-sm text-slate-500">
+              Indica il ruolo di ciascuna variabile: <strong>matching</strong> (usata nella distanza/algoritmo),
+              <strong> diagnostic</strong> (solo diagnostica di bilanciamento, non entra nel matching),
+              <strong> outcome</strong> (endpoint, per analisi future), oppure nessuno.
+            </p>
+            <table className="min-w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 text-slate-400 uppercase">
+                  <th className="px-3 py-2">Column</th>
+                  <th className="px-3 py-2">Role</th>
+                </tr>
+              </thead>
+              <tbody>
+                {candidateColumns.map((column) => (
+                  <tr key={column.name} className="border-b border-slate-100">
+                    <td className="px-3 py-2 font-mono text-slate-700">{column.name}</td>
+                    <td className="px-3 py-2">
+                      <select
+                        value={covariateRoles[column.name] ?? "none"}
+                        onChange={(e) => {
+                          const role = e.target.value as CovariateRole;
+                          setCovariateRoles((prev) => ({ ...prev, [column.name]: role }));
+                          if (role !== "matching") {
+                            setExactMatchCovariates((prev) => {
+                              if (!prev.has(column.name)) return prev;
+                              const next = new Set(prev);
+                              next.delete(column.name);
+                              return next;
+                            });
+                          }
+                        }}
+                        className="rounded border border-slate-300 px-2 py-1"
+                      >
+                        <option value="matching">matching</option>
+                        <option value="diagnostic">diagnostic</option>
+                        <option value="outcome">outcome</option>
+                        <option value="none">none</option>
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
 
@@ -166,9 +244,10 @@ export function MatchingDesignSection() {
         {tab === "constraints" && (
           <div className="space-y-3">
             <div>
-              <p className="mb-1 text-sm text-slate-600">Exact-match covariates (hard constraint)</p>
+              <p className="mb-1 text-sm text-slate-600">Exact-match covariates (hard constraint) — solo tra le variabili di ruolo "matching"</p>
               <div className="flex flex-wrap gap-3 rounded border border-slate-200 p-3 bg-slate-50">
-                {matchingCovariates.map((c) => (
+                {matchingColumnNames.length === 0 && <span className="text-xs text-slate-400">Nessuna covariata di matching selezionata.</span>}
+                {matchingColumnNames.map((c) => (
                   <label key={c} className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
                     <input
                       type="checkbox"
@@ -211,7 +290,6 @@ export function MatchingDesignSection() {
                 <option value="optimal_hungarian">Optimal (Hungarian)</option>
               </select>
             </div>
-            {/* Dynamic: replacement is disabled for Hungarian (unique assignment). */}
             <label className={`flex items-center gap-2 text-sm ${isHungarian ? "opacity-40" : ""}`}>
               <input type="checkbox" checked={!isHungarian && allowReplacement} disabled={isHungarian} onChange={(e) => setAllowReplacement(e.target.checked)} />
               Allow replacement {isHungarian && "(not available for Hungarian)"}
@@ -248,14 +326,17 @@ export function MatchingDesignSection() {
         )}
       </div>
 
-      {runError && (
-        <p className="mt-4 rounded border border-red-200 bg-red-50 p-3 text-xs text-red-700">{runError}</p>
+      {matchingColumnNames.length === 0 && (
+        <p className="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
+          Nessuna variabile con ruolo "matching": serve almeno una per poter eseguire il run.
+        </p>
       )}
+      {runError && <p className="mt-4 rounded border border-red-200 bg-red-50 p-3 text-xs text-red-700">{runError}</p>}
 
       <div className="mt-6 flex justify-end">
         <button
           onClick={() => runMutation.mutate()}
-          disabled={runMutation.isPending || caliperIsInvalid}
+          disabled={runMutation.isPending || caliperIsInvalid || matchingColumnNames.length === 0}
           className="rounded bg-blue-600 px-6 py-2.5 text-sm font-medium text-white shadow hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {runMutation.isPending ? "Avvio in corso..." : "Run Analysis →"}

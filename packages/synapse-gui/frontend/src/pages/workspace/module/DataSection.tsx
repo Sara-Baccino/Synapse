@@ -1,387 +1,329 @@
 /**
  * synapse-gui frontend DataSection
  * -----------------------------------------
- * Selezione 1 vs 2 dataset, con parsing automatico delle colonne per la
- * selezione interattiva di trattamento/id/covariate, e collegamento reale
- * a check-compatibility + merge-populations + parse-config: da qui in poi
- * il resto del workflow (Explore, Matching Design, Run) lavora sempre su
- * un unico workingDatasetId + treatmentColumn, indipendentemente da quanti
- * file sono stati caricati.
+ * Data Loading + Data Config in one page (Block C): upload triggers an
+ * automatic parse-config (default inference), then the real, editable
+ * DataConfigTable is shown -- recap box, per-column role/missing/scaling/
+ * encoding/values&mapping, all wired to the backend, no mock defaults.
+ *
+ * Two-dataset mode keeps THREE separate DataConfigs, stored in
+ * WorkspaceContext.dataConfigs (already keyed by dataset_id, no new
+ * state needed): one for Population A, one for Population B, and one for
+ * the merged/common dataset actually used for matching -- so later
+ * sections (Exploration's "distribution of non-common variables per
+ * group") can still see each population's own full configuration.
+ *
+ * Matching-covariate *selection* itself no longer happens here: it moves
+ * to Matching Design - Covariates (Block E). Until that block lands, all
+ * active, non-id columns (minus the treatment column) are used as a
+ * temporary default so the pipeline keeps working end-to-end.
  */
 import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { checkCompatibility, mergePopulations, parseConfig, uploadDataset } from "../../../api/client";
+import {
+  checkConfigCompatibility, mergePopulations, parseConfig, uploadDataset,
+} from "../../../api/client";
+import { DataConfigTable, toRawDataConfig } from "../../../components/DataConfigTable";
 import { useWorkspace } from "../../../context/WorkspaceContext";
 import type { PopulationSelection } from "../../../context/WorkspaceContext";
-import type { CompatibilityCheckResponse, DatasetUploadResponse } from "../../../types/api";
+import type {
+  ColumnInfoDTO, ColumnStatsDTO, ConfigCompatibilityResponse, DatasetUploadResponse,
+} from "../../../types/api";
+import { expandColumnToCovariateNames } from "../../../utils/covariateExpansion";
 
-const NO_ID_COLUMN = "";
-const DEFAULT_MERGE_TREATMENT_COLUMN = "treatment";
+const MERGE_TREATMENT_COLUMN = "treatment";
 
-function ColumnPickerTable({
-  dataset,
-  treatmentColumn,
-  onTreatmentColumnChange,
-  idColumn,
-  onIdColumnChange,
-  selectedCovariates,
-  onToggleCovariate,
-}: {
-  dataset: DatasetUploadResponse;
-  treatmentColumn: string;
-  onTreatmentColumnChange: (col: string) => void;
-  idColumn: string;
-  onIdColumnChange: (col: string) => void;
-  selectedCovariates: Set<string>;
-  onToggleCovariate: (col: string, checked: boolean) => void;
-}) {
-  return (
-    <div className="mt-4 overflow-hidden rounded-lg border border-slate-200">
-      <div className="flex items-center justify-between bg-slate-50 px-4 py-2 text-xs text-slate-500">
-        <span>Seleziona la colonna trattamento/gruppo (obbligatoria) e, se presente, un identificativo (opzionale).</span>
-        {idColumn !== NO_ID_COLUMN && (
-          <button type="button" onClick={() => onIdColumnChange(NO_ID_COLUMN)} className="font-medium text-blue-600 hover:underline">
-            Rimuovi ID
-          </button>
-        )}
-      </div>
-      <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
-        <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-500">
-          <tr>
-            <th className="px-4 py-3">Colonna</th>
-            <th className="px-4 py-3">Tipo Dato</th>
-            <th className="px-4 py-3 text-center">ID</th>
-            <th className="px-4 py-3 text-center">Trattamento / Gruppo</th>
-            <th className="px-4 py-3 text-center">Covariata Matching</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100 bg-white">
-          {dataset.columns.map((col) => {
-            const isTreatment = treatmentColumn === col.name;
-            const isId = idColumn === col.name;
-            const isCovariate = selectedCovariates.has(col.name);
+interface DatasetConfigState {
+  columns: ColumnInfoDTO[];
+  stats: ColumnStatsDTO[];
+  nRows: number;
+}
 
-            return (
-              <tr key={col.name} className="hover:bg-slate-50">
-                <td className="px-4 py-2.5 font-medium text-slate-800">{col.name}</td>
-                <td className="px-4 py-2.5 text-xs text-slate-400 font-mono">{col.dtype}</td>
-                <td className="px-4 py-2.5 text-center">
-                  <input
-                    type="radio"
-                    name="id-column"
-                    checked={isId}
-                    disabled={isTreatment}
-                    onChange={() => onIdColumnChange(col.name)}
-                    className="h-4 w-4 text-slate-600 focus:ring-slate-500 disabled:opacity-30"
-                  />
-                </td>
-                <td className="px-4 py-2.5 text-center">
-                  <input
-                    type="radio"
-                    name="treatment-column"
-                    checked={isTreatment}
-                    onChange={() => {
-                      onTreatmentColumnChange(col.name);
-                      if (isId) onIdColumnChange(NO_ID_COLUMN);
-                    }}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500"
-                  />
-                </td>
-                <td className="px-4 py-2.5 text-center">
-                  <input
-                    type="checkbox"
-                    checked={isCovariate}
-                    disabled={isTreatment || isId}
-                    onChange={(e) => onToggleCovariate(col.name, e.target.checked)}
-                    className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500 disabled:opacity-30"
-                  />
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
+function deriveMatchingCovariates(
+  columns: ColumnInfoDTO[], treatmentColumn: string | null, stats: ColumnStatsDTO[]
+): string[] {
+  const names: string[] = [];
+  for (const c of columns) {
+    if (!c.active || c.id || c.name === treatmentColumn || !(c.numerical || c.categorical)) continue;
+    names.push(...expandColumnToCovariateNames(c, stats));
+  }
+  return names;
+}
+
+function deriveIdColumn(columns: ColumnInfoDTO[]): string | null {
+  return columns.find((c) => c.id)?.name ?? null;
 }
 
 export function DataSection() {
   const navigate = useNavigate();
   const { moduleId } = useParams<{ moduleId: string }>();
-  const { addToCart, setPopulationSelection } = useWorkspace();
+  const { addToCart, setDataConfigFor, setColumnStatsFor, setPopulationSelection } = useWorkspace();
 
   const [mode, setMode] = useState<"single_dataset" | "two_datasets">("single_dataset");
+
   const [datasetSingle, setDatasetSingle] = useState<DatasetUploadResponse | null>(null);
+  const [configSingle, setConfigSingle] = useState<DatasetConfigState | null>(null);
+  const [treatmentColumn, setTreatmentColumn] = useState("");
+
   const [datasetA, setDatasetA] = useState<DatasetUploadResponse | null>(null);
   const [datasetB, setDatasetB] = useState<DatasetUploadResponse | null>(null);
-
-  const [treatmentColumn, setTreatmentColumn] = useState("");
-  const [idColumnSingle, setIdColumnSingle] = useState(NO_ID_COLUMN);
-  const [covariatesSingle, setCovariatesSingle] = useState<Set<string>>(new Set());
-
-  const [idColumnA, setIdColumnA] = useState(NO_ID_COLUMN);
-  const [idColumnB, setIdColumnB] = useState(NO_ID_COLUMN);
-  const [covariatesTwoDatasets, setCovariatesTwoDatasets] = useState<Set<string>>(new Set());
-  const [compatibility, setCompatibility] = useState<CompatibilityCheckResponse | null>(null);
+  const [configA, setConfigA] = useState<DatasetConfigState | null>(null);
+  const [configB, setConfigB] = useState<DatasetConfigState | null>(null);
+  const [configCompat, setConfigCompat] = useState<ConfigCompatibilityResponse | null>(null);
 
   const [confirmError, setConfirmError] = useState<string | null>(null);
 
-  const uploadMutation = useMutation({ mutationFn: (file: File) => uploadDataset(file) });
-
-  const compatMutation = useMutation({
-    mutationFn: (payload: { dataset_id_a: string; dataset_id_b: string }) => checkCompatibility(payload),
-    onSuccess: (response) => {
-      setCompatibility(response);
-      // Dropping any covariate no longer valid for the new pair, rather
-      // than silently sending a stale selection to merge-populations.
-      setCovariatesTwoDatasets((prev) => new Set([...prev].filter((c) => response.common_columns.includes(c))));
+  const uploadSingleMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const dataset = await uploadDataset(file);
+      const parsed = await parseConfig({ dataset_id: dataset.dataset_id });
+      return { dataset, parsed };
+    },
+    onSuccess: ({ dataset, parsed }) => {
+      addToCart({ datasetId: dataset.dataset_id, filename: dataset.filename, origin: { kind: "upload" } });
+      setDatasetSingle(dataset);
+      setConfigSingle({ columns: parsed.data_config.columns, stats: parsed.column_stats, nRows: parsed.n_rows });
+      setTreatmentColumn("");
     },
   });
 
-  // Re-check compatibility as soon as both populations are uploaded (or
-  // re-uploaded), per the requirement: with two datasets, only variables
-  // confirmed to exist in both -- same name AND compatible dtype -- can
-  // ever be offered as matching covariates.
+  const uploadAMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const dataset = await uploadDataset(file);
+      const parsed = await parseConfig({ dataset_id: dataset.dataset_id });
+      return { dataset, parsed };
+    },
+    onSuccess: ({ dataset, parsed }) => {
+      addToCart({ datasetId: dataset.dataset_id, filename: dataset.filename, origin: { kind: "upload" } });
+      setDatasetA(dataset);
+      setConfigA({ columns: parsed.data_config.columns, stats: parsed.column_stats, nRows: parsed.n_rows });
+      setConfigCompat(null);
+    },
+  });
+
+  const uploadBMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const dataset = await uploadDataset(file);
+      const parsed = await parseConfig({ dataset_id: dataset.dataset_id });
+      return { dataset, parsed };
+    },
+    onSuccess: ({ dataset, parsed }) => {
+      addToCart({ datasetId: dataset.dataset_id, filename: dataset.filename, origin: { kind: "upload" } });
+      setDatasetB(dataset);
+      setConfigB({ columns: parsed.data_config.columns, stats: parsed.column_stats, nRows: parsed.n_rows });
+      setConfigCompat(null);
+    },
+  });
+
+  const compatMutation = useMutation({
+    mutationFn: () => checkConfigCompatibility({ dataset_id_a: datasetA!.dataset_id, dataset_id_b: datasetB!.dataset_id }),
+    onSuccess: (response) => setConfigCompat(response),
+  });
+
+  // Automatic first check as soon as both populations have a config;
+  // afterwards the user can re-run it manually (button below) after
+  // editing roles, rather than re-checking on every keystroke.
   useEffect(() => {
-    if (datasetA && datasetB) {
-      compatMutation.mutate({ dataset_id_a: datasetA.dataset_id, dataset_id_b: datasetB.dataset_id });
-    } else {
-      setCompatibility(null);
+    if (datasetA && datasetB && configA && configB && !configCompat) {
+      compatMutation.mutate();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [datasetA?.dataset_id, datasetB?.dataset_id]);
+  }, [datasetA?.dataset_id, datasetB?.dataset_id, Boolean(configA), Boolean(configB)]);
 
-  const confirmMutation = useMutation({
+  const confirmSingleMutation = useMutation({
     mutationFn: async (): Promise<PopulationSelection> => {
-      if (mode === "single_dataset") {
-        const dataset = datasetSingle!;
-        await parseConfig({
-          dataset_id: dataset.dataset_id,
-          id_columns: idColumnSingle ? [idColumnSingle] : undefined,
-          infer_id: true,
-        });
-        return {
-          mode: "single_dataset",
-          datasetId: dataset.dataset_id,
-          workingDatasetId: dataset.dataset_id,
-          treatmentColumn,
-          idColumn: idColumnSingle || null,
-          matchingCovariates: Array.from(covariatesSingle),
-        };
+      const dataset = datasetSingle!;
+      const persisted = await parseConfig({
+        dataset_id: dataset.dataset_id, existing_config: toRawDataConfig(configSingle!.columns),
+      });
+      if (!persisted.validation.is_valid) {
+        throw new Error(persisted.validation.errors.join("; ") || "Configurazione non valida.");
       }
-
-      const merged = await mergePopulations({
-        dataset_id_a: datasetA!.dataset_id,
-        dataset_id_b: datasetB!.dataset_id,
-        treatment_col_name: DEFAULT_MERGE_TREATMENT_COLUMN,
-        columns: Array.from(covariatesTwoDatasets),
-        id_column_a: idColumnA || null,
-        id_column_b: idColumnB || null,
-      });
-      const hasSourceId = Boolean(idColumnA || idColumnB);
-      await parseConfig({
-        dataset_id: merged.dataset_id,
-        id_columns: hasSourceId ? ["source_id"] : undefined,
-        infer_id: true,
-      });
+      setDataConfigFor(dataset.dataset_id, persisted.data_config);
+      setColumnStatsFor(dataset.dataset_id, persisted.column_stats);
+      const activeColumns = persisted.data_config.columns.filter((c) => c.active);
       return {
-        mode: "two_datasets",
-        datasetIdA: datasetA!.dataset_id,
-        datasetIdB: datasetB!.dataset_id,
-        workingDatasetId: merged.dataset_id,
-        treatmentColumn: DEFAULT_MERGE_TREATMENT_COLUMN,
-        idColumn: hasSourceId ? "source_id" : null,
-        matchingCovariates: Array.from(covariatesTwoDatasets),
+        mode: "single_dataset",
+        datasetId: dataset.dataset_id,
+        workingDatasetId: dataset.dataset_id,
+        treatmentColumn,
+        idColumn: deriveIdColumn(activeColumns),
+        matchingCovariates: deriveMatchingCovariates(activeColumns, treatmentColumn, persisted.column_stats),
       };
     },
     onSuccess: (selection) => {
       setConfirmError(null);
       setPopulationSelection(selection);
-      const currentModule = moduleId || "matching";
-      navigate(`/workspace/modules/${currentModule}/exploration`);
+      navigate(`/workspace/modules/${moduleId || "matching"}/exploration`);
     },
-    onError: (error: unknown) => {
-      setConfirmError(error instanceof Error ? error.message : "Impossibile completare la selezione delle popolazioni.");
+    onError: (error: unknown) => setConfirmError(error instanceof Error ? error.message : "Errore di configurazione."),
+  });
+
+  const confirmTwoDatasetsMutation = useMutation({
+    mutationFn: async (): Promise<PopulationSelection> => {
+      const persistedA = await parseConfig({
+        dataset_id: datasetA!.dataset_id, existing_config: toRawDataConfig(configA!.columns),
+      });
+      if (!persistedA.validation.is_valid) {
+        throw new Error(`Population A: ${persistedA.validation.errors.join("; ")}`);
+      }
+      const persistedB = await parseConfig({
+        dataset_id: datasetB!.dataset_id, existing_config: toRawDataConfig(configB!.columns),
+      });
+      if (!persistedB.validation.is_valid) {
+        throw new Error(`Population B: ${persistedB.validation.errors.join("; ")}`);
+      }
+      setDataConfigFor(datasetA!.dataset_id, persistedA.data_config);
+      setColumnStatsFor(datasetA!.dataset_id, persistedA.column_stats);
+      setDataConfigFor(datasetB!.dataset_id, persistedB.data_config);
+      setColumnStatsFor(datasetB!.dataset_id, persistedB.column_stats);
+
+      const compat = await checkConfigCompatibility({ dataset_id_a: datasetA!.dataset_id, dataset_id_b: datasetB!.dataset_id });
+      if (compat.compatible_columns.length === 0) {
+        throw new Error("Nessuna colonna con lo stesso ruolo di configurazione tra i due dataset: impossibile unire le popolazioni.");
+      }
+
+      const idColumnA = deriveIdColumn(persistedA.data_config.columns);
+      const idColumnB = deriveIdColumn(persistedB.data_config.columns);
+
+      const merged = await mergePopulations({
+        dataset_id_a: datasetA!.dataset_id, dataset_id_b: datasetB!.dataset_id,
+        treatment_col_name: MERGE_TREATMENT_COLUMN, columns: compat.compatible_columns,
+        id_column_a: idColumnA, id_column_b: idColumnB,
+      });
+      const hasSourceId = Boolean(idColumnA || idColumnB);
+      const mergedParsed = await parseConfig({
+        dataset_id: merged.dataset_id, id_columns: hasSourceId ? ["source_id"] : undefined, infer_id: true,
+      });
+      setDataConfigFor(merged.dataset_id, mergedParsed.data_config);
+      setColumnStatsFor(merged.dataset_id, mergedParsed.column_stats);
+
+      const activeColumns = mergedParsed.data_config.columns.filter((c) => c.active);
+      return {
+        mode: "two_datasets",
+        datasetIdA: datasetA!.dataset_id, datasetIdB: datasetB!.dataset_id,
+        workingDatasetId: merged.dataset_id, treatmentColumn: MERGE_TREATMENT_COLUMN,
+        idColumn: hasSourceId ? "source_id" : deriveIdColumn(activeColumns),
+        matchingCovariates: deriveMatchingCovariates(activeColumns, MERGE_TREATMENT_COLUMN, mergedParsed.column_stats),
+      };
     },
+    onSuccess: (selection) => {
+      setConfirmError(null);
+      setPopulationSelection(selection);
+      navigate(`/workspace/modules/${moduleId || "matching"}/exploration`);
+    },
+    onError: (error: unknown) => setConfirmError(error instanceof Error ? error.message : "Errore di configurazione."),
   });
 
   function handleUpload(e: React.ChangeEvent<HTMLInputElement>, target: "single" | "a" | "b") {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    uploadMutation.mutate(file, {
-      onSuccess: (response) => {
-        addToCart({ datasetId: response.dataset_id, filename: response.filename, origin: { kind: "upload" } });
-        if (target === "single") {
-          setDatasetSingle(response);
-          setTreatmentColumn("");
-          setIdColumnSingle(NO_ID_COLUMN);
-          setCovariatesSingle(new Set());
-        }
-        if (target === "a") {
-          setDatasetA(response);
-          setIdColumnA(NO_ID_COLUMN);
-        }
-        if (target === "b") {
-          setDatasetB(response);
-          setIdColumnB(NO_ID_COLUMN);
-        }
-      },
-    });
+    if (target === "single") uploadSingleMutation.mutate(file);
+    if (target === "a") uploadAMutation.mutate(file);
+    if (target === "b") uploadBMutation.mutate(file);
   }
 
-  function toggleCovariateSingle(col: string, checked: boolean) {
-    setCovariatesSingle((prev) => {
-      const next = new Set(prev);
-      if (checked) next.add(col);
-      else next.delete(col);
-      return next;
-    });
-  }
-
-  function toggleCovariateTwoDatasets(col: string, checked: boolean) {
-    setCovariatesTwoDatasets((prev) => {
-      const next = new Set(prev);
-      if (checked) next.add(col);
-      else next.delete(col);
-      return next;
-    });
-  }
-
-  const canConfirm =
-    mode === "single_dataset"
-      ? Boolean(datasetSingle && treatmentColumn && covariatesSingle.size > 0)
-      : Boolean(datasetA && datasetB && compatibility?.is_compatible && covariatesTwoDatasets.size > 0);
-
-  const isBusy = uploadMutation.isPending || compatMutation.isPending || confirmMutation.isPending;
+  const canConfirmSingle = Boolean(datasetSingle && configSingle && treatmentColumn);
+  const canConfirmTwoDatasets = Boolean(datasetA && datasetB && configA && configB && configCompat?.compatible_columns.length);
+  const isBusy =
+    uploadSingleMutation.isPending || uploadAMutation.isPending || uploadBMutation.isPending ||
+    compatMutation.isPending || confirmSingleMutation.isPending || confirmTwoDatasetsMutation.isPending;
 
   return (
-    <div className="max-w-5xl">
+    <div className="max-w-6xl">
       <h1 className="text-2xl font-bold text-slate-800 mb-2">Data Loading</h1>
-      <p className="text-sm text-slate-500 mb-6">
-        Select populations and matching variables.
-      </p>
+      <p className="text-sm text-slate-500 mb-6">Select populations and review their data configuration.</p>
 
-      {/* Scelta tra 1 o 2 dataset */}
       <div className="mb-6 flex gap-6 rounded-lg bg-slate-100 p-4">
         <label className="flex items-center gap-2 text-sm font-medium text-slate-700 cursor-pointer">
-          <input
-            type="radio"
-            checked={mode === "single_dataset"}
-            onChange={() => setMode("single_dataset")}
-            className="text-blue-600 focus:ring-blue-500"
-          />
+          <input type="radio" checked={mode === "single_dataset"} onChange={() => setMode("single_dataset")} className="text-blue-600" />
           Single Dataset (Group/Treatment column)
         </label>
         <label className="flex items-center gap-2 text-sm font-medium text-slate-700 cursor-pointer">
-          <input
-            type="radio"
-            checked={mode === "two_datasets"}
-            onChange={() => setMode("two_datasets")}
-            className="text-blue-600 focus:ring-blue-500"
-          />
+          <input type="radio" checked={mode === "two_datasets"} onChange={() => setMode("two_datasets")} className="text-blue-600" />
           Two Separate Populations (Target vs Control)
         </label>
       </div>
 
       {mode === "single_dataset" ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-          <label className="block text-sm font-medium text-slate-700 mb-2">File Dataset (.xlsx, .csv, .parquet)</label>
-          <input type="file" accept=".csv,.parquet,.json,.xlsx,.xls" onChange={(e) => handleUpload(e, "single")} className="block text-sm text-slate-500" />
+        <div className="space-y-4">
+          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+            <label className="block text-sm font-medium text-slate-700 mb-2">File Dataset (.csv, .parquet, .xlsx)</label>
+            <input type="file" accept=".csv,.parquet,.json,.xlsx,.xls" onChange={(e) => handleUpload(e, "single")} className="block text-sm text-slate-500" />
+            {uploadSingleMutation.isPending && <p className="mt-2 text-xs font-semibold text-blue-600">Caricamento e analisi in corso...</p>}
+          </div>
 
-          {uploadMutation.isPending && <p className="mt-2 text-xs font-semibold text-blue-600">File analysis in progress...</p>}
+          {datasetSingle && configSingle && (
+            <>
+              <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                <label className="block text-sm font-medium text-slate-700 mb-1">Colonna trattamento / gruppo</label>
+                <select value={treatmentColumn} onChange={(e) => setTreatmentColumn(e.target.value)} className="rounded border border-slate-300 px-3 py-2 text-sm">
+                  <option value="">— Seleziona —</option>
+                  {configSingle.columns.filter((c) => c.active && !c.id).map((c) => (
+                    <option key={c.name} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
 
-          {datasetSingle && (
-            <div className="mt-4">
-              <p className="text-xs font-semibold text-slate-600">
-                {datasetSingle.filename} — {datasetSingle.n_rows} rows, {datasetSingle.n_columns} columns
-              </p>
-              <ColumnPickerTable
-                dataset={datasetSingle}
-                treatmentColumn={treatmentColumn}
-                onTreatmentColumnChange={setTreatmentColumn}
-                idColumn={idColumnSingle}
-                onIdColumnChange={setIdColumnSingle}
-                selectedCovariates={covariatesSingle}
-                onToggleCovariate={toggleCovariateSingle}
+              <DataConfigTable
+                title="Data Config" columns={configSingle.columns} columnStats={configSingle.stats} nRows={configSingle.nRows}
+                onColumnsChange={(columns) => setConfigSingle({ ...configSingle, columns })}
               />
-            </div>
+            </>
           )}
         </div>
       ) : (
-        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm space-y-6">
-          <div className="grid grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Population A (Treated / Target)</label>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+              <label className="block text-sm font-medium text-slate-700 mb-2">Population A (Treated / Target)</label>
               <input type="file" accept=".csv,.parquet,.json,.xlsx,.xls" onChange={(e) => handleUpload(e, "a")} className="block text-sm" />
-              {datasetA && (
-                <>
-                  <p className="mt-1 text-xs text-slate-500">{datasetA.filename} ({datasetA.n_rows} righe)</p>
-                  <label className="mt-2 block text-xs font-medium text-slate-600">Colonna ID (opzionale)</label>
-                  <select value={idColumnA} onChange={(e) => setIdColumnA(e.target.value)} className="mt-1 w-full rounded border border-slate-300 text-xs p-1.5">
-                    <option value={NO_ID_COLUMN}>— Nessuna —</option>
-                    {datasetA.columns.map((col) => (
-                      <option key={col.name} value={col.name}>{col.name}</option>
-                    ))}
-                  </select>
-                </>
-              )}
+              {uploadAMutation.isPending && <p className="mt-2 text-xs font-semibold text-blue-600">Caricamento...</p>}
             </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Population B (Controls / Reference)</label>
+            <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+              <label className="block text-sm font-medium text-slate-700 mb-2">Population B (Controls / Reference)</label>
               <input type="file" accept=".csv,.parquet,.json,.xlsx,.xls" onChange={(e) => handleUpload(e, "b")} className="block text-sm" />
-              {datasetB && (
-                <>
-                  <p className="mt-1 text-xs text-slate-500">{datasetB.filename} ({datasetB.n_rows} righe)</p>
-                  <label className="mt-2 block text-xs font-medium text-slate-600">Colonna ID (opzionale)</label>
-                  <select value={idColumnB} onChange={(e) => setIdColumnB(e.target.value)} className="mt-1 w-full rounded border border-slate-300 text-xs p-1.5">
-                    <option value={NO_ID_COLUMN}>— Nessuna —</option>
-                    {datasetB.columns.map((col) => (
-                      <option key={col.name} value={col.name}>{col.name}</option>
-                    ))}
-                  </select>
-                </>
-              )}
+              {uploadBMutation.isPending && <p className="mt-2 text-xs font-semibold text-blue-600">Caricamento...</p>}
             </div>
           </div>
 
-          {datasetA && datasetB && (
-            <div>
-              {compatMutation.isPending && <p className="text-xs font-semibold text-blue-600">Verifica delle colonne in comune...</p>}
+          {datasetA && configA && (
+            <DataConfigTable
+              title={`Data Config — ${datasetA.filename} (Population A)`} columns={configA.columns} columnStats={configA.stats} nRows={configA.nRows}
+              onColumnsChange={(columns) => { setConfigA({ ...configA, columns }); setConfigCompat(null); }}
+            />
+          )}
+          {datasetB && configB && (
+            <DataConfigTable
+              title={`Data Config — ${datasetB.filename} (Population B)`} columns={configB.columns} columnStats={configB.stats} nRows={configB.nRows}
+              onColumnsChange={(columns) => { setConfigB({ ...configB, columns }); setConfigCompat(null); }}
+            />
+          )}
 
-              {compatibility && !compatibility.is_compatible && (
-                <p className="rounded border border-red-200 bg-red-50 p-3 text-xs text-red-700">
-                  Nessuna colonna utilizzabile in comune tra i due dataset (stesso nome e tipo compatibile). Impossibile procedere con il matching su questa coppia.
-                </p>
-              )}
-
-              {compatibility && compatibility.dtype_mismatches.length > 0 && (
-                <p className="mb-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700">
-                  Escluse per tipo incompatibile tra i due dataset: {compatibility.dtype_mismatches.map((m) => m.column).join(", ")}
-                </p>
-              )}
-
-              {compatibility && compatibility.is_compatible && (
+          {datasetA && datasetB && configA && configB && (
+            <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-700">Compatibilità di configurazione</h3>
+                <button onClick={() => compatMutation.mutate()} disabled={compatMutation.isPending} className="text-xs text-blue-600 hover:underline disabled:opacity-40">
+                  {compatMutation.isPending ? "Verifica..." : "Ricontrolla dopo le modifiche"}
+                </button>
+              </div>
+              {configCompat && (
                 <>
-                  <p className="mb-2 text-xs font-medium text-slate-700">
-                    Seleziona le covariate di matching (solo colonne presenti in entrambi i dataset):
-                  </p>
-                  <div className="flex flex-wrap gap-3 rounded border border-slate-200 p-3 bg-slate-50">
-                    {compatibility.common_columns.map((col) => (
-                      <label key={col} className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={covariatesTwoDatasets.has(col)}
-                          onChange={(e) => toggleCovariateTwoDatasets(col, e.target.checked)}
-                          className="rounded text-blue-600"
-                        />
-                        {col}
-                      </label>
-                    ))}
-                  </div>
+                  {configCompat.compatible_columns.length > 0 ? (
+                    <p className="text-xs text-slate-600">
+                      Colonne comuni con configurazione coerente: <span className="font-mono">{configCompat.compatible_columns.join(", ")}</span>
+                    </p>
+                  ) : (
+                    <p className="text-xs text-red-600">Nessuna colonna comune con lo stesso ruolo di configurazione.</p>
+                  )}
+                  {configCompat.mismatched_columns.length > 0 && (
+                    <p className="mt-1 text-xs text-amber-600">
+                      Ruolo incoerente tra A e B: {configCompat.mismatched_columns.map((m) => `${m.column} (${m.reason})`).join("; ")}
+                    </p>
+                  )}
                 </>
               )}
             </div>
@@ -389,18 +331,15 @@ export function DataSection() {
         </div>
       )}
 
-      {confirmError && (
-        <p className="mt-4 rounded border border-red-200 bg-red-50 p-3 text-xs text-red-700">{confirmError}</p>
-      )}
+      {confirmError && <p className="mt-4 rounded border border-red-200 bg-red-50 p-3 text-xs text-red-700">{confirmError}</p>}
 
-      {/* Bottone di conferma e avanzamento */}
       <div className="mt-6 flex justify-end">
         <button
-          onClick={() => confirmMutation.mutate()}
-          disabled={!canConfirm || isBusy}
+          onClick={() => (mode === "single_dataset" ? confirmSingleMutation.mutate() : confirmTwoDatasetsMutation.mutate())}
+          disabled={isBusy || (mode === "single_dataset" ? !canConfirmSingle : !canConfirmTwoDatasets)}
           className="rounded bg-blue-600 px-6 py-2.5 text-sm font-medium text-white shadow hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {confirmMutation.isPending ? "Elaborazione in corso..." : "Confirm Selection and Go to Exploration →"}
+          {confirmSingleMutation.isPending || confirmTwoDatasetsMutation.isPending ? "Elaborazione..." : "Confirm Selection and Go to Exploration →"}
         </button>
       </div>
     </div>

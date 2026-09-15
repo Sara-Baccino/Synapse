@@ -284,3 +284,77 @@ def test_merge_populations_returns_404_for_unknown_dataset(client: TestClient, a
         headers=auth_headers,
     )
     assert response.status_code == 404
+
+
+# --------------------------------------------------------------------- #
+# Block C: column_stats (missing %, distinct values) + config-level
+# compatibility between two separately-configured datasets
+# --------------------------------------------------------------------- #
+
+def _sample_csv_bytes_with_missing_and_categorical() -> bytes:
+    # 'region' is categorical with 3 distinct values; 'age' has one
+    # missing cell (row 3), so missing_pct must come out to 1/4 = 0.25.
+    return (
+        b"patient_id,age,region\n"
+        b"1,45,north\n"
+        b"2,60,south\n"
+        b"3,38,north\n"
+        b"4,,east\n"
+    )
+
+
+def test_parse_config_reports_missing_pct_and_distinct_values(client: TestClient, auth_headers: dict[str, str]) -> None:
+    dataset_id = _upload(client, auth_headers, "sample.csv", _sample_csv_bytes_with_missing_and_categorical())
+    response = client.post("/datasets/parse-config", json={"dataset_id": dataset_id}, headers=auth_headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["n_rows"] == 4
+    assert body["n_columns"] == 3
+
+    stats_by_name = {s["name"]: s for s in body["column_stats"]}
+    assert stats_by_name["age"]["missing_pct"] == 0.25
+    assert stats_by_name["region"]["missing_pct"] == 0.0
+    assert stats_by_name["region"]["n_distinct"] == 3
+    assert set(stats_by_name["region"]["distinct_values"]) == {"north", "south", "east"}
+    # age is numerical, not categorical: no distinct-value dropdown for it.
+    assert stats_by_name["age"]["distinct_values"] is None
+
+
+def test_check_config_compatibility_flags_role_mismatch(client: TestClient, auth_headers: dict[str, str]) -> None:
+    dataset_id_a = _upload(client, auth_headers, "a.csv", _sample_csv_bytes())
+    dataset_id_b = _upload(client, auth_headers, "b.csv", _sample_csv_bytes_b())
+    client.post("/datasets/parse-config", json={"dataset_id": dataset_id_a}, headers=auth_headers)
+    client.post("/datasets/parse-config", json={"dataset_id": dataset_id_b}, headers=auth_headers)
+
+    # Manually flip 'age' to categorical in A only, simulating a user edit
+    # in the Data Config UI that makes the two configs inconsistent.
+    override = {
+        "patient_id": {"new_name": "patient_id", "id": True, "type": "int"},
+        "age": {"new_name": "age", "categorical": True, "type": "int"},
+        "clinical_score": {"new_name": "clinical_score", "numerical": True, "type": "float"},
+        "treatment": {"new_name": "treatment", "categorical": True, "type": "int"},
+    }
+    client.post("/datasets/parse-config", json={"dataset_id": dataset_id_a, "existing_config": override}, headers=auth_headers)
+
+    response = client.post(
+        "/datasets/check-config-compatibility",
+        json={"dataset_id_a": dataset_id_a, "dataset_id_b": dataset_id_b},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert "age" not in body["compatible_columns"]
+    mismatched_columns = {m["column"] for m in body["mismatched_columns"]}
+    assert "age" in mismatched_columns
+    assert "clinical_score" in body["compatible_columns"]
+
+
+def test_check_config_compatibility_requires_parsed_config_first(client: TestClient, auth_headers: dict[str, str]) -> None:
+    dataset_id_a = _upload(client, auth_headers, "a.csv", _sample_csv_bytes())
+    dataset_id_b = _upload(client, auth_headers, "b.csv", _sample_csv_bytes_b())
+    response = client.post(
+        "/datasets/check-config-compatibility",
+        json={"dataset_id_a": dataset_id_a, "dataset_id_b": dataset_id_b},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422

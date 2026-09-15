@@ -3,6 +3,7 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, Field
 
 from synapse_matching.algorithms.base import MatchingAlgorithm, MatchingOutput
+from synapse_matching.constraints.caliper_window import CALIPER_WINDOW_PENALTY
 
 __all__ = ["NearestNeighborConfig", "GreedyNearestNeighborMatching"]
 
@@ -60,6 +61,12 @@ class GreedyNearestNeighborMatching(MatchingAlgorithm):
                 if taken_this_round >= self._config.ratio_k:
                     break
                 dist = row[local_idx]
+                if dist >= CALIPER_WINDOW_PENALTY:
+                    # Pair was masked out by a hard per-covariate caliper
+                    # window (ConstraintsConfig.caliper_windows) upstream:
+                    # always rejected, independent of whether an overall
+                    # scalar caliper is configured below.
+                    continue
                 if self._config.caliper is not None and dist > self._config.caliper:
                     continue
                 pool_index = available[local_idx]

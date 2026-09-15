@@ -56,7 +56,20 @@ export interface ParseConfigRequest {
   dataset_id: string; existing_config?: Record<string, unknown> | null;
   id_columns?: string[] | null; infer_id?: boolean; custom_id_patterns?: string[] | null;
 }
-export interface ParseConfigResponse { dataset_id: string; data_config: DataConfigDTO; validation: ConfigValidationDTO; }
+export interface ColumnStatsDTO {
+  name: string; missing_pct: number; n_distinct: number; distinct_values: string[] | null;
+}
+
+export interface ParseConfigResponse {
+  dataset_id: string; data_config: DataConfigDTO; validation: ConfigValidationDTO;
+  n_rows: number; n_columns: number; column_stats: ColumnStatsDTO[];
+}
+
+export interface ConfigMismatchDTO { column: string; reason: string; }
+export interface ConfigCompatibilityRequest { dataset_id_a: string; dataset_id_b: string; }
+export interface ConfigCompatibilityResponse {
+  common_columns: string[]; compatible_columns: string[]; mismatched_columns: ConfigMismatchDTO[];
+}
 
 export interface LegacyFieldMapping { column: string; legacy_field: string; legacy_value: unknown; mapped_to: string; }
 export interface ImportConfigResponse {
@@ -87,7 +100,7 @@ export interface FromArtifactRequest { source_job_id: string; artifact_name: str
 
 // ====================== MatchingModuleConfig sub-configs ======================
 export interface PopulationConfig { treatment_col: string; matching_direction: "treated_to_control" | "control_to_treated" | "bidirectional_full"; id_col?: string | null; }
-export interface CovariatesConfig { matching_covariates: string[]; evaluation_covariates?: string[]; covariate_missing_threshold?: number; }
+export interface CovariatesConfig { matching_covariates: string[]; evaluation_covariates?: string[]; outcome_covariates?: string[]; covariate_missing_threshold?: number; }
 export interface PropensityScoreConfig { poly_degree?: number; regularization_c?: number; max_iter?: number; random_state?: number | null; }
 export interface RepresentationConfig {
   use_propensity_score?: boolean; ps_method?: "logistic" | "random_forest" | "lightgbm";

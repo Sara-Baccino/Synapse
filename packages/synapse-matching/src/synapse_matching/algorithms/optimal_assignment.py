@@ -14,10 +14,11 @@ from pydantic import BaseModel, ConfigDict
 from scipy.optimize import linear_sum_assignment
 
 from synapse_matching.algorithms.base import MatchingAlgorithm, MatchingOutput
+from synapse_matching.constraints.caliper_window import CALIPER_WINDOW_PENALTY
 
 __all__ = ["OptimalAssignmentConfig", "OptimalAssignmentMatching"]
 
-_PENALTY = 1e10
+_PENALTY = CALIPER_WINDOW_PENALTY
 
 
 class OptimalAssignmentConfig(BaseModel):
@@ -64,9 +65,16 @@ class OptimalAssignmentMatching(MatchingAlgorithm):
 
         row_ind, col_ind = linear_sum_assignment(cost_matrix)
 
+        selected_distances = D[row_ind, col_ind]
+        # Pairs masked out by a hard per-covariate caliper window
+        # (ConstraintsConfig.caliper_windows) are always rejected here,
+        # independent of whether an overall scalar caliper is configured
+        # below -- Hungarian may still have picked one of these as "least
+        # bad" if nothing better was available for that row/column.
+        valid = selected_distances < _PENALTY
         if self._config.caliper is not None:
-            valid = D[row_ind, col_ind] <= self._config.caliper
-            row_ind, col_ind = row_ind[valid], col_ind[valid]
+            valid &= selected_distances <= self._config.caliper
+        row_ind, col_ind = row_ind[valid], col_ind[valid]
 
         matched_query = set(row_ind.tolist())
         unmatched = np.array([i for i in range(n_query) if i not in matched_query], dtype=int)

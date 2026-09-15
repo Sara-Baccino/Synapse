@@ -15,6 +15,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Literal
 
+import polars as pl
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
@@ -114,10 +115,42 @@ class ParseConfigRequest(BaseModel):
     custom_id_patterns: list[str] | None = None
 
 
+class ColumnStatsDTO(BaseModel):
+    name: str
+    missing_pct: float
+    n_distinct: int
+    distinct_values: list[str] | None = None
+    """Populated only for categorical columns with a manageable number of
+    distinct values (<= _MAX_DISTINCT_VALUES): this feeds the "select
+    values / mapping" dropdown in the Data Config UI. None for numerical
+    or high-cardinality columns, where listing every value isn't useful."""
+
+
 class ParseConfigResponse(BaseModel):
     dataset_id: str
     data_config: DataConfigDTO
     validation: ConfigValidationDTO
+    n_rows: int
+    n_columns: int
+    column_stats: list[ColumnStatsDTO]
+
+
+class ConfigMismatchDTO(BaseModel):
+    column: str
+    reason: str
+
+
+class ConfigCompatibilityRequest(BaseModel):
+    dataset_id_a: str
+    dataset_id_b: str
+
+
+class ConfigCompatibilityResponse(BaseModel):
+    common_columns: list[str]
+    compatible_columns: list[str]
+    """Common columns whose DataConfig role (categorical/numerical) agrees
+    between the two datasets -- safe to use in the merged/common config."""
+    mismatched_columns: list[ConfigMismatchDTO]
 
 
 class RowFilterCondition(BaseModel):
@@ -320,6 +353,32 @@ def get_dataset(dataset_id: str, current_user: CurrentUserResponse = Depends(get
     )
 
 
+_MAX_DISTINCT_VALUES = 50
+
+
+def _compute_column_stats(dataframe: pl.DataFrame, data_config: DataConfig) -> list[ColumnStatsDTO]:
+    """% missing and (for low-cardinality categorical columns) the
+    distinct value list, computed live against the current dataframe --
+    not stored on DataConfig itself, since these are facts about the data,
+    not configuration choices."""
+    height = dataframe.height or 1
+    stats: list[ColumnStatsDTO] = []
+    for name, info in data_config.items():
+        if name not in dataframe.columns:
+            continue
+        series = dataframe[name]
+        missing_pct = series.null_count() / height
+        distinct_series = series.drop_nulls().unique()
+        n_distinct = distinct_series.len()
+        distinct_values = None
+        if info.categorical and n_distinct <= _MAX_DISTINCT_VALUES:
+            distinct_values = [str(v) for v in distinct_series.sort().to_list()]
+        stats.append(
+            ColumnStatsDTO(name=name, missing_pct=missing_pct, n_distinct=n_distinct, distinct_values=distinct_values)
+        )
+    return stats
+
+
 @router.post("/parse-config", response_model=ParseConfigResponse)
 def parse_config(request: ParseConfigRequest, current_user: CurrentUserResponse = Depends(get_current_user)) -> ParseConfigResponse:
     try:
@@ -347,6 +406,57 @@ def parse_config(request: ParseConfigRequest, current_user: CurrentUserResponse 
             is_valid=validation.is_valid, missing_in_dataset=validation.missing_in_dataset,
             unconfigured_in_dataset=validation.unconfigured_in_dataset, errors=validation.errors,
         ),
+        n_rows=record.dataframe.height, n_columns=record.dataframe.width,
+        column_stats=_compute_column_stats(record.dataframe, data_config),
+    )
+
+
+@router.post("/check-config-compatibility", response_model=ConfigCompatibilityResponse)
+def check_config_compatibility(
+    request: ConfigCompatibilityRequest, current_user: CurrentUserResponse = Depends(get_current_user)
+) -> ConfigCompatibilityResponse:
+    """Config-level compatibility, on top of the existing dtype-level
+    check_dataset_compatibility: two datasets can share a column with the
+    same name and dtype family (Fase 2) yet still have it configured
+    inconsistently (e.g. numerical in A, categorical in B, after manual
+    editing in the Data Config UI). Merging on such a column would be
+    silently wrong, so this is surfaced explicitly instead.
+    """
+    try:
+        record_a = dataset_store.get(request.dataset_id_a)
+        record_b = dataset_store.get(request.dataset_id_b)
+    except DatasetNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    if record_a.data_config is None or record_b.data_config is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Both datasets need a DataConfig before checking config compatibility -- call parse-config first.",
+        )
+
+    dtype_compat = check_dataset_compatibility(record_a.dataframe, record_b.dataframe)
+    compatible: list[str] = []
+    mismatched: list[ConfigMismatchDTO] = []
+    for column in dtype_compat.common_columns:
+        info_a = record_a.data_config.columns.get(column)
+        info_b = record_b.data_config.columns.get(column)
+        if info_a is None or info_b is None:
+            continue
+        if info_a.categorical != info_b.categorical or info_a.numerical != info_b.numerical:
+            mismatched.append(
+                ConfigMismatchDTO(
+                    column=column,
+                    reason=(
+                        f"categorical={info_a.categorical}/{info_b.categorical}, "
+                        f"numerical={info_a.numerical}/{info_b.numerical}"
+                    ),
+                )
+            )
+        else:
+            compatible.append(column)
+
+    return ConfigCompatibilityResponse(
+        common_columns=dtype_compat.common_columns, compatible_columns=compatible, mismatched_columns=mismatched
     )
 
 
