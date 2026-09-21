@@ -71,8 +71,8 @@ export function MatchingDesignSection() {
   const [matchingDirection, setMatchingDirection] = useState<"treated_to_control" | "control_to_treated">("treated_to_control");
   const [usePropensityScore, setUsePropensityScore] = useState(true);
   const [matchingSpace, setMatchingSpace] = useState<"covariates_only" | "ps_only" | "logit_ps_only" | "hybrid_covariates_and_ps">("covariates_only");
-  const [exactMatchCovariates, setExactMatchCovariates] = useState<Set<string>>(new Set());
-  const [stratifiedMatching, setStratifiedMatching] = useState(false);
+  const [constraintType, setConstraintType] = useState<Record<string, "none" | "exact" | "caliper">>({});
+  const [caliperConfigs, setCaliperConfigs] = useState<Record<string, { value: string; scale: "absolute" | "standard_deviation" }>>({});
   const [distanceMetric, setDistanceMetric] = useState<"euclidean" | "mahalanobis" | "gower" | "weighted_hybrid">("euclidean");
   const [matchingAlgorithm, setMatchingAlgorithm] = useState<"greedy_nn" | "optimal_hungarian">("greedy_nn");
   const [allowReplacement, setAllowReplacement] = useState(false);
@@ -92,6 +92,15 @@ export function MatchingDesignSection() {
       const role = covariateRoles[column.name] ?? "none";
       grouped[role].push(...expandColumnToCovariateNames(column, stats));
     }
+    const exactMatchCovariates = matchingColumnNames.filter((name) => constraintType[name] === "exact");
+    const caliperWindows = matchingColumnNames
+      .filter((name) => constraintType[name] === "caliper" && caliperConfigs[name]?.value.trim())
+      .map((name) => ({
+        covariate: name,
+        caliper_value: Number(caliperConfigs[name].value),
+        scale: caliperConfigs[name].scale,
+      }));
+
     return {
       population: { treatment_col: workingDataset!.treatmentColumn, matching_direction: matchingDirection },
       covariates: {
@@ -101,8 +110,9 @@ export function MatchingDesignSection() {
       },
       representation: { use_propensity_score: usePropensityScore, matching_space: matchingSpace },
       constraints: {
-        exact_match_covariates: Array.from(exactMatchCovariates),
-        stratified_matching: stratifiedMatching,
+        exact_match_covariates: exactMatchCovariates,
+        stratified_matching: exactMatchCovariates.length > 0,
+        caliper_windows: caliperWindows,
       },
       distance: { distance_metric: distanceMetric },
       strategy: {
@@ -196,10 +206,10 @@ export function MatchingDesignSection() {
                           const role = e.target.value as CovariateRole;
                           setCovariateRoles((prev) => ({ ...prev, [column.name]: role }));
                           if (role !== "matching") {
-                            setExactMatchCovariates((prev) => {
-                              if (!prev.has(column.name)) return prev;
-                              const next = new Set(prev);
-                              next.delete(column.name);
+                            setConstraintType((prev) => {
+                              if (!(column.name in prev)) return prev;
+                              const next = { ...prev };
+                              delete next[column.name];
                               return next;
                             });
                           }
@@ -242,33 +252,71 @@ export function MatchingDesignSection() {
         )}
 
         {tab === "constraints" && (
-          <div className="space-y-3">
-            <div>
-              <p className="mb-1 text-sm text-slate-600">Exact-match covariates (hard constraint) — solo tra le variabili di ruolo "matching"</p>
-              <div className="flex flex-wrap gap-3 rounded border border-slate-200 p-3 bg-slate-50">
-                {matchingColumnNames.length === 0 && <span className="text-xs text-slate-400">Nessuna covariata di matching selezionata.</span>}
-                {matchingColumnNames.map((c) => (
-                  <label key={c} className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={exactMatchCovariates.has(c)}
-                      onChange={(e) =>
-                        setExactMatchCovariates((prev) => {
-                          const next = new Set(prev);
-                          if (e.target.checked) next.add(c); else next.delete(c);
-                          return next;
-                        })
-                      }
-                    />
-                    {c}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={stratifiedMatching} onChange={(e) => setStratifiedMatching(e.target.checked)} />
-              Stratified matching {exactMatchCovariates.size === 0 && "(seleziona almeno una covariata sopra per avere effetto)"}
-            </label>
+          <div>
+            <p className="mb-3 text-sm text-slate-500">
+              Per ciascuna covariata di ruolo "matching": <strong>none</strong> (nessun vincolo),
+              <strong> exact match</strong> (hard constraint / stratificazione — uguaglianza esatta,
+              stesso meccanismo per entrambe), oppure <strong>caliper window</strong> (tolleranza numerica:
+              coppia valida solo se |differenza| ≤ caliper — per le categoriche equivale comunque a uguaglianza esatta).
+            </p>
+            {matchingColumnNames.length === 0 ? (
+              <p className="text-xs text-slate-400">Nessuna covariata di ruolo "matching" (vedi tab Covariates).</p>
+            ) : (
+              <table className="min-w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 text-slate-400 uppercase">
+                    <th className="px-3 py-2">Covariate</th>
+                    <th className="px-3 py-2">Constraint</th>
+                    <th className="px-3 py-2">Caliper value</th>
+                    <th className="px-3 py-2">Scale</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {matchingColumnNames.map((name) => {
+                    const column = candidateColumns.find((c) => c.name === name);
+                    const isNumeric = Boolean(column?.numerical);
+                    const type = constraintType[name] ?? "none";
+                    const caliperConfig = caliperConfigs[name] ?? { value: "", scale: "absolute" as const };
+                    return (
+                      <tr key={name} className="border-b border-slate-100">
+                        <td className="px-3 py-2 font-mono text-slate-700">{name}</td>
+                        <td className="px-3 py-2">
+                          <select
+                            value={type}
+                            onChange={(e) => setConstraintType((prev) => ({ ...prev, [name]: e.target.value as typeof type }))}
+                            className="rounded border border-slate-300 px-2 py-1"
+                          >
+                            <option value="none">none</option>
+                            <option value="exact">exact match (hard / stratification)</option>
+                            {isNumeric && <option value="caliper">caliper window</option>}
+                          </select>
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            value={caliperConfig.value}
+                            disabled={type !== "caliper"}
+                            placeholder="e.g. 5"
+                            onChange={(e) => setCaliperConfigs((prev) => ({ ...prev, [name]: { ...caliperConfig, value: e.target.value } }))}
+                            className="w-20 rounded border border-slate-300 px-2 py-1 disabled:opacity-40"
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <select
+                            value={caliperConfig.scale}
+                            disabled={type !== "caliper"}
+                            onChange={(e) => setCaliperConfigs((prev) => ({ ...prev, [name]: { ...caliperConfig, scale: e.target.value as typeof caliperConfig.scale } }))}
+                            className="rounded border border-slate-300 px-2 py-1 disabled:opacity-40"
+                          >
+                            <option value="absolute">absolute</option>
+                            <option value="standard_deviation">standard deviations</option>
+                          </select>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
 
