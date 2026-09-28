@@ -9,7 +9,7 @@
  */
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from "recharts";
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from "recharts";
 import { explorePopulation, type ExploreRequest, type PopulationProfile } from "../../../api/client";
 import { getWorkingDataset, useWorkspace } from "../../../context/WorkspaceContext";
 
@@ -48,7 +48,7 @@ export function ExplorationSection() {
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "distributions", label: "Distributions" },
-    { id: "categorical", label: "Categorical" },
+    { id: "categorical", label: "Categorical & Discrete" },
     { id: "missingness", label: "Missingness" },
     { id: "correlations", label: "Correlations" },
   ];
@@ -129,39 +129,39 @@ export function ExplorationSection() {
               )}
 
               {(!profile.numeric_distributions || profile.numeric_distributions.length === 0) && (
-                <p className="text-xs text-slate-400">No numeric covariates with variation to plot.</p>
+                <p className="text-xs text-slate-400">Nessuna variabile continua (≥7 valori distinti) da mostrare qui — le variabili discrete/categoriche sono nella tab "Categorical &amp; Discrete".</p>
               )}
 
               {profile.numeric_distributions?.map((dist) => {
-                const chartData = (dist.bin_edges || []).slice(0, -1).map((edge, i) => ({
-                  bin: `${edge.toFixed(1)}-${dist.bin_edges[i + 1]?.toFixed(1)}`,
-                  treated: dist.treated_counts?.[i] ?? 0,
-                  control: dist.control_counts?.[i] ?? 0,
+                const chartData = dist.x_grid.map((x, i) => ({
+                  x: x.toFixed(2),
+                  treated: dist.treated_density[i] ?? 0,
+                  control: dist.control_density[i] ?? 0,
                 }));
 
                 return (
                   <div key={dist.variable} className="mb-6">
-                    <p className="mb-2 text-sm font-semibold text-slate-700">{dist.variable}</p>
-                    <BarChart width={520} height={240} data={chartData}>
+                    <p className="mb-2 text-sm font-semibold text-slate-700">{dist.variable} <span className="font-normal text-xs text-slate-400">(KDE)</span></p>
+                    <LineChart width={520} height={220} data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="bin" fontSize={10} />
-                      <YAxis fontSize={10} />
-                      <Tooltip />
+                      <XAxis dataKey="x" fontSize={10} tick={false} label={{ value: dist.variable, position: "insideBottom", fontSize: 10, offset: -2 }} />
+                      <YAxis fontSize={10} label={{ value: "density", angle: -90, position: "insideLeft", fontSize: 10 }} />
+                      <Tooltip formatter={(value: number) => value.toFixed(4)} />
                       <Legend />
-                      <Bar dataKey="treated" fill="#2563eb" name="Treated" />
-                      <Bar dataKey="control" fill="#f472b6" name="Control" />
-                    </BarChart>
+                      <Line type="monotone" dataKey="treated" stroke="#2563eb" name="Treated" dot={false} strokeWidth={2} />
+                      <Line type="monotone" dataKey="control" stroke="#f472b6" name="Control" dot={false} strokeWidth={2} />
+                    </LineChart>
                   </div>
                 );
               })}
             </div>
           )}
 
-          {/* TAB 2: CATEGORICAL */}
+          {/* TAB 2: CATEGORICAL & DISCRETE (true categoricals + low-cardinality numeric, <7 distinct values) */}
           {tab === "categorical" && (
             <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
               {(!profile.categorical_frequencies || profile.categorical_frequencies.length === 0) ? (
-                <p className="text-xs text-slate-400">No categorical covariates selected.</p>
+                <p className="text-xs text-slate-400">Nessuna variabile categorica o a bassa cardinalità (&lt;7 valori) tra le covariate selezionate.</p>
               ) : (
                 profile.categorical_frequencies.map((freq) => {
                   const chartData = (freq.categories || []).map((cat, i) => ({
@@ -219,27 +219,42 @@ export function ExplorationSection() {
 
           {/* TAB 4: CORRELATIONS */}
           {tab === "correlations" && (
-            <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-              {(!profile.correlations?.variables || profile.correlations.variables.length < 2) ? (
-                <p className="text-xs text-slate-400">Need at least 2 numeric covariates to compute correlations.</p>
-              ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div>
-                    <p className="mb-2 text-sm font-semibold text-slate-700">Treated Group</p>
-                    <CorrelationTable
-                      variables={profile.correlations.variables}
-                      matrix={profile.correlations.treated_matrix || []}
-                    />
+            <div className="space-y-6">
+              <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="mb-4 text-sm font-semibold text-slate-700">Numerical (Pearson) — variabili continue</h2>
+                {(!profile.numerical_correlations?.variables || profile.numerical_correlations.variables.length < 2) ? (
+                  <p className="text-xs text-slate-400">Servono almeno 2 variabili continue per calcolare le correlazioni.</p>
+                ) : (
+                  <div className="space-y-6">
+                    <div>
+                      <p className="mb-2 text-sm font-medium text-slate-700">Treated Group</p>
+                      <CorrelationTable variables={profile.numerical_correlations.variables} matrix={profile.numerical_correlations.treated_matrix || []} />
+                    </div>
+                    <div>
+                      <p className="mb-2 text-sm font-medium text-slate-700">Control Group</p>
+                      <CorrelationTable variables={profile.numerical_correlations.variables} matrix={profile.numerical_correlations.control_matrix || []} />
+                    </div>
                   </div>
-                  <div>
-                    <p className="mb-2 text-sm font-semibold text-slate-700">Control Group</p>
-                    <CorrelationTable
-                      variables={profile.correlations.variables}
-                      matrix={profile.correlations.control_matrix || []}
-                    />
+                )}
+              </div>
+
+              <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="mb-4 text-sm font-semibold text-slate-700">Categorical (Cramér's V) — variabili categoriche/discrete</h2>
+                {(!profile.categorical_correlations?.variables || profile.categorical_correlations.variables.length < 2) ? (
+                  <p className="text-xs text-slate-400">Servono almeno 2 variabili categoriche/discrete per calcolare le associazioni.</p>
+                ) : (
+                  <div className="space-y-6">
+                    <div>
+                      <p className="mb-2 text-sm font-medium text-slate-700">Treated Group</p>
+                      <CorrelationTable variables={profile.categorical_correlations.variables} matrix={profile.categorical_correlations.treated_matrix || []} />
+                    </div>
+                    <div>
+                      <p className="mb-2 text-sm font-medium text-slate-700">Control Group</p>
+                      <CorrelationTable variables={profile.categorical_correlations.variables} matrix={profile.categorical_correlations.control_matrix || []} />
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           )}
         </>

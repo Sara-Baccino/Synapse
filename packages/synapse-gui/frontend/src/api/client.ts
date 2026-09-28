@@ -184,9 +184,9 @@ export interface DescriptiveStatRow {
 
 export interface NumericDistribution { 
   variable: string; 
-  bin_edges: number[]; 
-  treated_counts: number[]; 
-  control_counts: number[]; 
+  x_grid: number[]; 
+  treated_density: number[]; 
+  control_density: number[]; 
 }
 
 export interface CategoricalFrequency { 
@@ -213,7 +213,8 @@ export interface PopulationProfile {
   numeric_distributions: NumericDistribution[];  
   categorical_frequencies: CategoricalFrequency[];  
   missingness: MissingnessRow[];  
-  correlations: CorrelationMatrix;
+  numerical_correlations: CorrelationMatrix;
+  categorical_correlations: CorrelationMatrix;
 }
 
 export interface ExploreRequest { 

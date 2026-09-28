@@ -32,9 +32,15 @@ class DescriptiveStatRow(BaseModel):
 class NumericDistribution(BaseModel):
     model_config = ConfigDict(extra="forbid")
     variable: str
-    bin_edges: list[float]
-    treated_counts: list[int]
-    control_counts: list[int]
+    x_grid: list[float]
+    treated_density: list[float]
+    control_density: list[float]
+    """Gaussian KDE (scipy.stats.gaussian_kde) evaluated over a shared
+    x_grid, not a binned histogram: this is the actual continuous
+    distribution shape, not an artifact of a bin-width choice. Only
+    populated for variables treated as continuous (numeric with >= 7
+    distinct values) -- lower-cardinality numeric variables and every
+    categorical variable go through CategoricalFrequency instead."""
 
 
 class CategoricalFrequency(BaseModel):
@@ -65,4 +71,9 @@ class PopulationProfile(BaseModel):
     numeric_distributions: list[NumericDistribution]
     categorical_frequencies: list[CategoricalFrequency]
     missingness: list[MissingnessRow]
-    correlations: CorrelationMatrix
+    numerical_correlations: CorrelationMatrix
+    """Pearson correlation among genuinely continuous covariates only."""
+    categorical_correlations: CorrelationMatrix
+    """Cramér's V association among categorical (and low-cardinality
+    numeric) covariates -- a different statistic from Pearson, so kept
+    as a separate matrix rather than mixed into the same heatmap."""

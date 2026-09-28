@@ -130,7 +130,8 @@ def test_explore_population_returns_profile(client: TestClient, auth_headers: di
     body = response.json()
     assert len(body["descriptive_stats"]) == 4  # 2 covariates x 2 groups
     assert len(body["numeric_distributions"]) == 2
-    assert len(body["correlations"]["variables"]) == 2
+    assert len(body["numerical_correlations"]["variables"]) == 2
+    assert body["categorical_correlations"]["variables"] == []
 
 
 # --------------------------------------------------------------------- #
